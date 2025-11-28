@@ -1,5 +1,5 @@
 import React from 'react';
-import { ThumbsDown, AlertCircle, ArrowRight } from 'lucide-react';
+import { ThumbsDown, AlertCircle, ArrowRight, LogOut, Clock } from 'lucide-react'; 
 import { Button, Badge } from './UI';
 import { CATEGORIES } from '../constants';
 import { Player, RoundAnswers, Vote } from '../types';
@@ -9,18 +9,19 @@ interface VotingPhaseProps {
   answers: RoundAnswers;
   currentLetter: string;
   currentPlayerId: string;
-  
-  // YENİ PROP'LAR
-  currentVotes: Vote[]; // Tüm oylar buradan geliyor
-  currentCategoryIndex: number; // Kategori sırası DB'den geliyor
+  currentVotes: Vote[]; 
+  currentCategoryIndex: number; 
   isHost: boolean;
   onNextCategory: () => void;
   onToggleVote: (targetPlayerId: string) => void;
+  onVotingComplete: (votes: Vote[]) => void; 
+  initialBotVotes: Vote[]; 
+  onLeave: () => void; 
 }
 
 const VotingPhase: React.FC<VotingPhaseProps> = ({ 
   players, answers, currentLetter, currentPlayerId,
-  currentVotes, currentCategoryIndex, isHost, onNextCategory, onToggleVote 
+  currentVotes, currentCategoryIndex, isHost, onNextCategory, onToggleVote, onLeave 
 }) => {
   
   const category = CATEGORIES[currentCategoryIndex];
@@ -28,8 +29,10 @@ const VotingPhase: React.FC<VotingPhaseProps> = ({
   const isLastCategory = currentCategoryIndex === CATEGORIES.length - 1;
 
   return (
-    <div className="max-w-2xl w-full mx-auto space-y-6 animate-fade-in pb-28">
-      <div className="text-center space-y-2">
+    <div className="max-w-2xl w-full mx-auto space-y-6 animate-fade-in pb-32 relative px-4 md:px-0">
+      
+      {/* ÜST BAŞLIK ALANI */}
+      <div className="text-center space-y-2 mt-6 md:mt-0">
         <Badge color="bg-yellow-500/20 text-yellow-300">OYLAMA ZAMANI</Badge>
         <h2 className="text-3xl font-bold text-white">{category}</h2>
         <div className="flex items-center justify-center gap-2 text-slate-400">
@@ -41,6 +44,7 @@ const VotingPhase: React.FC<VotingPhaseProps> = ({
         </p>
       </div>
 
+      {/* OYUNCU KARTLARI LİSTESİ */}
       <div className="space-y-3">
         {players.map((player) => {
           const answer = answers[player.id]?.[category] || "";
@@ -49,7 +53,6 @@ const VotingPhase: React.FC<VotingPhaseProps> = ({
 
           const invalidStart = answer && !answer.trim().toLocaleUpperCase('tr-TR').startsWith(currentLetter);
 
-          // Bu karta ait oyları filtrele
           const votesForThisCard = currentVotes.filter(v => 
             v.targetPlayerId === player.id && 
             v.category === category && 
@@ -57,7 +60,6 @@ const VotingPhase: React.FC<VotingPhaseProps> = ({
           );
 
           const voteCount = votesForThisCard.length;
-          // Ben oy verdim mi?
           const iVoted = currentVotes.some(v => 
              v.voterId === currentPlayerId && 
              v.targetPlayerId === player.id && 
@@ -137,14 +139,38 @@ const VotingPhase: React.FC<VotingPhaseProps> = ({
         })}
       </div>
 
-      {/* Sadece Yönetici İleri Butonunu Görür */}
-      {isHost && (
-        <div className="fixed bottom-6 left-0 right-0 flex justify-center px-4 z-30 pointer-events-none">
-          <Button onClick={onNextCategory} className="w-full max-w-md shadow-2xl pointer-events-auto" icon={<ArrowRight />}>
-            {isLastCategory ? 'Oylamayı Bitir' : 'Sıradaki Kategori'}
-          </Button>
+      {/* ALT AKSİYON ÇUBUĞU (FOOTER) - Herkes İçin Görünür */}
+      <div className="fixed bottom-0 left-0 right-0 p-4 md:p-6 bg-gradient-to-t from-slate-900 via-slate-900/95 to-transparent z-20 backdrop-blur-[2px]">
+        <div className="flex gap-3 max-w-lg mx-auto w-full items-stretch">
+            
+            {/* SOL: ÇIKIŞ BUTONU (Kare İkon) */}
+            <button
+                onClick={onLeave}
+                className="flex-none w-12 md:w-16 flex items-center justify-center rounded-xl md:rounded-2xl bg-slate-800/80 border border-slate-700 text-slate-400 hover:text-red-400 hover:bg-slate-800 hover:border-red-500/50 transition-all shadow-xl backdrop-blur-sm active:scale-95"
+                title="Odadan Ayrıl"
+            >
+                <LogOut className="w-5 h-5 md:w-6 md:h-6" />
+            </button>
+
+            {/* SAĞ: AKSİYON BUTONU */}
+            {isHost ? (
+              // YÖNETİCİ İSE: İLERİ BUTONU
+              <Button 
+                onClick={onNextCategory} 
+                className="flex-1 shadow-2xl !py-3 md:!py-4 text-base md:text-xl tracking-wide uppercase font-black transition-all duration-500 rounded-xl md:rounded-2xl"
+                icon={<ArrowRight />}
+              >
+                {isLastCategory ? 'Oylamayı Bitir' : 'Sıradaki'}
+              </Button>
+            ) : (
+              // OYUNCU İSE: BEKLEME GÖSTERGESİ (Pasif Buton Görünümlü)
+              <div className="flex-1 flex items-center justify-center gap-3 bg-slate-800/50 border border-slate-700/50 rounded-xl md:rounded-2xl text-slate-500 font-bold text-sm md:text-base animate-pulse">
+                 <Clock className="w-5 h-5" /> Yönetici Bekleniyor...
+              </div>
+            )}
         </div>
-      )}
+      </div>
+
     </div>
   );
 };

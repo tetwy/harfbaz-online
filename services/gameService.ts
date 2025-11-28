@@ -52,7 +52,36 @@ export const gameService = {
   },
 
   leaveRoom: async (playerId: string) => {
-    await supabase.from('players').delete().eq('id', playerId);
+    try {
+      // 1. Önce oyuncunun var olup olmadığını kontrol et (Hata almamak için)
+      const { data: player, error: fetchError } = await supabase
+        .from('players')
+        .select('id')
+        .eq('id', playerId)
+        .maybeSingle(); // single() yerine maybeSingle() kullanıyoruz, hata fırlatmaz
+
+      if (fetchError) {
+        console.error("Oyuncu kontrol hatası:", fetchError);
+        return;
+      }
+
+      if (!player) {
+        console.warn("Oyuncu zaten silinmiş veya bulunamadı.");
+        return;
+      }
+
+      // 2. Varsa sil
+      const { error: deleteError } = await supabase
+        .from('players')
+        .delete()
+        .eq('id', playerId);
+
+      if (deleteError) {
+        console.error("Oyuncu silinemedi:", deleteError);
+      }
+    } catch (err) {
+      console.error("Beklenmedik hata:", err);
+    }
   },
 
   getPlayers: async (roomId: string): Promise<Player[]> => {

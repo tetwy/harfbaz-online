@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Lobby from './components/Lobby';
 import WaitingRoom from './components/WaitingRoom';
 import GamePhase from './components/GamePhase';
@@ -16,20 +16,24 @@ const App: React.FC = () => {
   const [roundAnswers, setRoundAnswers] = useState<RoundAnswers>({});
   const [currentVotes, setCurrentVotes] = useState<Vote[]>([]); 
 
-  // --- YENİ EKLENEN: SAYFA YENİLEME UYARISI ---
+  // KESİN ÇÖZÜM: Bilinçli çıkışları takip eden referans
+  const isLeavingRef = useRef(false);
+
+  // --- SAYFA YENİLEME UYARISI (GÜNCELLENDİ) ---
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      // Eğer oyun oynanıyorsa (PLAYING) veya oylama (VOTING) yapılıyorsa uyarı ver
+      // Eğer çıkış butonuna basıldıysa (Bilinçli Çıkış), engelleme yapma!
+      if (isLeavingRef.current) return;
+
       if (status === GameStatus.PLAYING || status === GameStatus.VOTING) {
         e.preventDefault();
-        e.returnValue = ''; // Modern tarayıcılar için bu standarttır
+        e.returnValue = ''; 
       }
     };
 
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [status]);
-  // -------------------------------------------
+  }, [status]); // isLeavingRef ref olduğu için dependency'e eklemeye gerek yok
 
   // --- RECONNECTION ---
   useEffect(() => {
@@ -41,8 +45,6 @@ const App: React.FC = () => {
              setRoom(data.room);
              setMe(data.player);
              setActiveRoomId(data.room.id);
-             
-             // Odanın DB durumuna göre UI durumunu belirle
              let recoveredStatus = data.room.status as GameStatus;
              if (data.room.status === 'LOBBY') recoveredStatus = GameStatus.WAITING;
              setStatus(recoveredStatus);
@@ -108,9 +110,18 @@ const App: React.FC = () => {
     localStorage.setItem('harfbaz_session', JSON.stringify({ roomId: roomData.id, playerId: playerData.id }));
   };
 
+  // GÜNCELLENEN LEAVE FONKSİYONU
   const handleLeaveRoom = async () => {
+    isLeavingRef.current = true; // Korumayı devre dışı bırak
     localStorage.removeItem('harfbaz_session');
-    if (me?.id) await gameService.leaveRoom(me.id);
+    
+    if (me?.id) {
+        try {
+            await gameService.leaveRoom(me.id);
+        } catch (e) {
+            console.error("Çıkış hatası:", e);
+        }
+    }
     window.location.reload();
   };
 
@@ -168,8 +179,8 @@ const App: React.FC = () => {
     switch (status) {
       case GameStatus.LOBBY: return <Lobby onJoin={handleJoinRoom} />;
       case GameStatus.WAITING: return room && me ? <WaitingRoom room={room} currentPlayer={me} onStart={handleStartGame} onUpdateSettings={handleUpdateSettings} onLeave={handleLeaveRoom} /> : null;
-      case GameStatus.PLAYING: return room && me && activeRoomId ? <GamePhase letter={room.currentLetter} roundDuration={room.settings.roundDuration} roomId={activeRoomId} playerId={me.id} onTimeUp={handleRoundTimeUp} /> : null;
-      case GameStatus.VOTING: return room && me ? <VotingPhase players={room.players} answers={roundAnswers} currentLetter={room.currentLetter} currentPlayerId={me.id} currentVotes={currentVotes} currentCategoryIndex={room.votingCategoryIndex || 0} isHost={me.isHost} onNextCategory={handleNextCategory} onToggleVote={handleToggleVote} onVotingComplete={() => {}} initialBotVotes={[]} /> : null;
+      case GameStatus.PLAYING: return room && me && activeRoomId ? <GamePhase letter={room.currentLetter} roundDuration={room.settings.roundDuration} roomId={activeRoomId} playerId={me.id} onTimeUp={handleRoundTimeUp} onLeave={handleLeaveRoom} /> : null;
+      case GameStatus.VOTING: return room && me ? <VotingPhase players={room.players} answers={roundAnswers} currentLetter={room.currentLetter} currentPlayerId={me.id} currentVotes={currentVotes} currentCategoryIndex={room.votingCategoryIndex || 0} isHost={me.isHost} onNextCategory={handleNextCategory} onToggleVote={handleToggleVote} onVotingComplete={() => {}} initialBotVotes={[]} onLeave={handleLeaveRoom} /> : null;
       case GameStatus.SCORING:
       case GameStatus.GAME_OVER: return room ? <Scoreboard players={room.players} onNextRound={status === GameStatus.GAME_OVER ? handleReset : handleNextRound} isGameOver={status === GameStatus.GAME_OVER} roundNumber={room.currentRound} isHost={me?.isHost || false} onLeave={handleLeaveRoom} /> : null;
       default: return <div className="text-white animate-pulse">Yükleniyor...</div>;
