@@ -19,10 +19,11 @@ export interface Player {
 export interface RoomSettings {
   roundDuration: number; // seconds
   totalRounds: number;
+  isHiddenMode: boolean; // YENİ: Gizli Kelime Modu
 }
 
 export interface Room {
-  id: string; // <-- BU EKLENDİ (UUID için)
+  id: string;
   code: string;
   currentRound: number;
   currentLetter: string;
@@ -30,6 +31,8 @@ export interface Room {
   players: Player[];
   settings: RoomSettings;
   createdAt: string;
+  votingCategoryIndex?: number;
+  revealedPlayers: string[]; // YENİ: Kartını açan oyuncuların ID listesi
 }
 
 export interface RoundAnswers {

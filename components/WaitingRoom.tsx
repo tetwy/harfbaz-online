@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Copy, Users, Play, Crown, Clock, Hash, Settings, Check, LogOut } from 'lucide-react';
+import { Copy, Users, Play, Crown, Clock, Hash, Settings, Check, LogOut, Eye, EyeOff } from 'lucide-react'; // Eye, EyeOff eklendi
 import { Button, Card, Badge } from './UI';
 import { Room, Player, RoomSettings } from '../types';
 
@@ -31,6 +31,12 @@ const WaitingRoom: React.FC<WaitingRoomProps> = ({ room, currentPlayer, onStart,
   const handlePresetChange = (key: keyof RoomSettings, value: number) => {
     if (!currentPlayer.isHost) return;
     onUpdateSettings({ ...room.settings, [key]: value });
+  };
+
+  // Yeni: Gizli Mod Toggle
+  const toggleHiddenMode = () => {
+    if (!currentPlayer.isHost) return;
+    onUpdateSettings({ ...room.settings, isHiddenMode: !room.settings.isHiddenMode });
   };
 
   const handleInputChange = (setter: React.Dispatch<React.SetStateAction<string>>, value: string) => {
@@ -65,7 +71,7 @@ const WaitingRoom: React.FC<WaitingRoomProps> = ({ room, currentPlayer, onStart,
   return (
     <div className="max-w-7xl w-full mx-auto animate-fade-in pb-12 relative px-4 md:px-0">
       
-      {/* ÇIKIŞ BUTONU (Sadece Masaüstünde görünsün, mobilde aşağıya aldık) */}
+      {/* ÇIKIŞ BUTONU */}
       <button 
         onClick={onLeave}
         className="hidden md:flex absolute top-0 right-0 items-center gap-2 text-slate-500 hover:text-red-400 transition-colors text-sm font-bold bg-slate-800/50 px-3 py-1.5 rounded-lg border border-slate-700/50 hover:border-red-500/30"
@@ -90,23 +96,20 @@ const WaitingRoom: React.FC<WaitingRoomProps> = ({ room, currentPlayer, onStart,
                 {copied ? 'KOPYALANDI!' : 'ODA KODU'}
               </span>
 
-              {/* --- MOBİL GÖRÜNÜM: Çıkış - Kod - Kopyala --- */}
+              {/* MOBİL GÖRÜNÜM: Çıkış - Kod - Kopyala */}
               <div className="flex md:hidden items-center justify-between gap-2 px-1">
-                 {/* Sol: Çıkış Butonu */}
                  <button
                    onClick={onLeave}
-                   className="w-12 h-12 flex-shrink-0 flex items-center justify-center rounded-xl bg-red-500/10 text-red-500 border border-red-500/20 active:scale-95 transition-all"
+                   className="w-12 h-12 flex-shrink-0 flex items-center justify-center rounded-xl bg-red-500/10 text-red-500 border border-red-500/20 active:scale-95 transition-all shadow-lg shadow-red-900/10"
                    title="Odadan Çık"
                  >
                    <LogOut size={20} />
                  </button>
 
-                 {/* Orta: Kod Gösterimi */}
                  <div className="flex-1 h-12 flex items-center justify-center bg-slate-950 border-2 border-dashed border-slate-700 rounded-xl overflow-hidden">
                     <span className="text-3xl font-black tracking-widest font-mono text-white pt-1">{room.code}</span>
                  </div>
 
-                 {/* Sağ: Kopyala Butonu */}
                  <button
                    onClick={copyCode}
                    className={`
@@ -122,7 +125,7 @@ const WaitingRoom: React.FC<WaitingRoomProps> = ({ room, currentPlayer, onStart,
                  </button>
               </div>
 
-              {/* --- MASAÜSTÜ GÖRÜNÜM: Klasik Büyük Kutu --- */}
+              {/* MASAÜSTÜ GÖRÜNÜM: Klasik Büyük Kutu */}
               <div 
                 onClick={copyCode}
                 className={`
@@ -238,6 +241,35 @@ const WaitingRoom: React.FC<WaitingRoomProps> = ({ room, currentPlayer, onStart,
                   </div>
                 )}
               </div>
+
+              {/* YENİ: Gizli Kelime Modu */}
+              <div className="pt-2 border-t border-white/5">
+                <button
+                  onClick={toggleHiddenMode}
+                  disabled={!currentPlayer.isHost}
+                  className={`w-full flex items-center justify-between p-3 rounded-xl border transition-all ${
+                    room.settings.isHiddenMode 
+                      ? 'bg-purple-500/10 border-purple-500/50 text-purple-200' 
+                      : 'bg-slate-900/50 border-slate-700 text-slate-400'
+                  } ${!currentPlayer.isHost ? 'cursor-default opacity-80' : 'hover:bg-slate-800'}`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-lg ${room.settings.isHiddenMode ? 'bg-purple-500 text-white' : 'bg-slate-800 text-slate-500'}`}>
+                      {room.settings.isHiddenMode ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </div>
+                    <div className="text-left">
+                      <div className="text-sm font-bold text-white">Gizli Kelime</div>
+                      <div className="text-[10px] text-slate-400">Oylamada kelimeler kapalı gelir</div>
+                    </div>
+                  </div>
+                  
+                  {/* Toggle Switch Görünümü */}
+                  <div className={`w-10 h-5 rounded-full relative transition-colors ${room.settings.isHiddenMode ? 'bg-purple-500' : 'bg-slate-700'}`}>
+                    <div className={`absolute top-1 w-3 h-3 rounded-full bg-white transition-all ${room.settings.isHiddenMode ? 'left-6' : 'left-1'}`}></div>
+                  </div>
+                </button>
+              </div>
+
             </div>
           </Card>
 
