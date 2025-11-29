@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Timer, Send, User, MapPin, Cat, Flower2, Package, Star, Globe, Briefcase, Utensils, Clapperboard, LogOut } from 'lucide-react';
 import { Button } from './UI';
 import { CATEGORIES } from '../constants';
@@ -32,24 +32,56 @@ const GamePhase: React.FC<GamePhaseProps> = ({ letter, roundDuration, roomId, pl
   const [timeLeft, setTimeLeft] = useState(roundDuration);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [submitted, setSubmitted] = useState(false);
+  
+  // Referans kullanarak en güncel cevaplara her an erişebilmeyi sağlıyoruz
+  // Bu, closure (kapsam) sorunlarını önler.
+  const answersRef = useRef(answers);
 
   useEffect(() => {
+    answersRef.current = answers;
+  }, [answers]);
+
+  useEffect(() => {
+    // Eğer süre dolduysa (veya zaten 0 geldiyse) hemen bitir
     if (timeLeft <= 0) {
-      handleFinish();
+      if (!submitted) {
+        handleFinish();
+      }
       return;
     }
-    const timer = setInterval(() => setTimeLeft(prev => prev - 1), 1000);
+
+    const timer = setInterval(() => {
+      setTimeLeft((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          // Süre 0 olduğunda, o anki state'i değil, ref'teki güncel cevapları gönder
+          if (!submitted) {
+             // Otomatik bitişte "submitted" state'ini burada set etmek yerine
+             // handleFinish fonksiyonunu çağırıyoruz ki o yapsın.
+             // Ancak useEffect içinde state update bazen race condition yaratabilir.
+             // O yüzden burayı dikkatli yönetiyoruz.
+             handleFinish(); 
+          }
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
     return () => clearInterval(timer);
-  }, [timeLeft]);
+  }, [timeLeft, submitted]); // submitted bağımlılığı önemli
 
   const handleInputChange = (category: string, value: string) => {
     setAnswers(prev => ({ ...prev, [category]: value }));
   };
 
   const handleFinish = () => {
+    // Çifte gönderimi engelle
     if (submitted) return;
     setSubmitted(true);
-    onTimeUp(answers);
+    
+    // Ref kullanarak en son girilen harfleri garanti altına alıyoruz
+    onTimeUp(answersRef.current);
   };
 
   const progressPercentage = (timeLeft / roundDuration) * 100;

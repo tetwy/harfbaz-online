@@ -11,11 +11,26 @@ const mapDbPlayer = (dbPlayer: any): Player => ({
   isReady: dbPlayer.is_ready
 });
 
+// YARDIMCI FONKSİYON: Kullanılmamış Rastgele Harf Seç
+const getUniqueRandomLetter = (usedLetters: string[]): string => {
+  // Alfabedeki harflerden kullanılmış olanları çıkar
+  const availableLetters = ALPHABET.split('').filter(letter => !usedLetters.includes(letter));
+  
+  // Eğer tüm harfler bittiyse (çok nadir ama oyun uzarsa olabilir), sıfırla ve tüm alfabeden seç
+  if (availableLetters.length === 0) {
+    return ALPHABET[Math.floor(Math.random() * ALPHABET.length)];
+  }
+
+  // Kalanlardan rastgele seç
+  return availableLetters[Math.floor(Math.random() * availableLetters.length)];
+};
+
 export const gameService = {
   // --- ODA YÖNETİMİ ---
   createRoom: async (hostName: string, avatar: string, settings: RoomSettings) => {
     const roomCode = Math.random().toString(36).substring(2, 6).toUpperCase();
-    const { data: roomData, error: roomError } = await supabase.from('rooms').insert({ code: roomCode, status: 'LOBBY', settings, voting_category_index: 0 }).select().single();
+    // used_letters dizisini de başlatıyoruz
+    const { data: roomData, error: roomError } = await supabase.from('rooms').insert({ code: roomCode, status: 'LOBBY', settings, voting_category_index: 0, used_letters: [] }).select().single();
     if (roomError) throw roomError;
     const { data: playerData, error: playerError } = await supabase.from('players').insert({ room_id: roomData.id, name: hostName, avatar, is_host: true, is_ready: true }).select().single();
     if (playerError) throw playerError;
@@ -31,7 +46,6 @@ export const gameService = {
     return { room: { ...roomData, players: (allPlayers || []).map(mapDbPlayer) }, player: mapDbPlayer(playerData) };
   },
 
-  // --- RECONNECTION (DÜZELTİLDİ: Harf ve Tur verisi maplendi) ---
   reconnect: async (roomId: string, playerId: string) => {
     const { data: roomData } = await supabase.from('rooms').select('*').eq('id', roomId).single();
     if (!roomData) return null;
@@ -39,7 +53,6 @@ export const gameService = {
     if (!playerData) return null;
     const { data: allPlayers } = await supabase.from('players').select('*').eq('room_id', roomId);
     
-    // DB verisini frontend formatına çevir (current_letter -> currentLetter)
     const mappedRoom = {
       ...roomData,
       currentLetter: roomData.current_letter,
@@ -53,34 +66,11 @@ export const gameService = {
 
   leaveRoom: async (playerId: string) => {
     try {
-      // 1. Önce oyuncunun var olup olmadığını kontrol et (Hata almamak için)
-      const { data: player, error: fetchError } = await supabase
-        .from('players')
-        .select('id')
-        .eq('id', playerId)
-        .maybeSingle(); // single() yerine maybeSingle() kullanıyoruz, hata fırlatmaz
-
-      if (fetchError) {
-        console.error("Oyuncu kontrol hatası:", fetchError);
-        return;
-      }
-
-      if (!player) {
-        console.warn("Oyuncu zaten silinmiş veya bulunamadı.");
-        return;
-      }
-
-      // 2. Varsa sil
-      const { error: deleteError } = await supabase
-        .from('players')
-        .delete()
-        .eq('id', playerId);
-
-      if (deleteError) {
-        console.error("Oyuncu silinemedi:", deleteError);
-      }
+      const { data: player, error: fetchError } = await supabase.from('players').select('id').eq('id', playerId).maybeSingle();
+      if (fetchError || !player) return;
+      await supabase.from('players').delete().eq('id', playerId);
     } catch (err) {
-      console.error("Beklenmedik hata:", err);
+      console.error("Hata:", err);
     }
   },
 
@@ -89,18 +79,40 @@ export const gameService = {
     return (data || []).map(mapDbPlayer);
   },
 
-  // --- OYUN AKIŞI ---
+  // --- OYUN AKIŞI (GÜNCELLENDİ: Harf Seçimi) ---
   startGame: async (roomId: string) => {
+    // İlk harfi seçerken de used_letters'a bak (Boş olsa bile standart olsun)
+    // Ancak ilk turda DB'den çekmeye gerek yok, direkt rastgele seçip ekleyebiliriz.
     const letter = ALPHABET[Math.floor(Math.random() * ALPHABET.length)];
-    await supabase.from('rooms').update({ status: 'PLAYING', current_letter: letter, current_round: 1, voting_category_index: 0 }).eq('id', roomId);
+    
+    await supabase.from('rooms').update({ 
+      status: 'PLAYING', 
+      current_letter: letter, 
+      current_round: 1, 
+      voting_category_index: 0,
+      used_letters: [letter] // İlk harfi kaydet
+    }).eq('id', roomId);
   },
 
   nextRound: async (roomId: string, currentRound: number, totalRounds: number) => {
     if (currentRound >= totalRounds) {
       await supabase.from('rooms').update({ status: 'GAME_OVER' }).eq('id', roomId);
     } else {
-      const letter = ALPHABET[Math.floor(Math.random() * ALPHABET.length)];
-      await supabase.from('rooms').update({ status: 'PLAYING', current_letter: letter, current_round: currentRound + 1, voting_category_index: 0 }).eq('id', roomId);
+      // 1. Önce odadaki kullanılmış harfleri çek
+      const { data: roomData } = await supabase.from('rooms').select('used_letters').eq('id', roomId).single();
+      const usedLetters = roomData?.used_letters || [];
+
+      // 2. Benzersiz yeni harf seç
+      const letter = getUniqueRandomLetter(usedLetters);
+
+      // 3. Odayı güncelle (Yeni harfi listeye ekle)
+      await supabase.from('rooms').update({ 
+        status: 'PLAYING', 
+        current_letter: letter, 
+        current_round: currentRound + 1, 
+        voting_category_index: 0,
+        used_letters: [...usedLetters, letter] // Listeyi güncelle
+      }).eq('id', roomId);
     }
   },
 
@@ -122,18 +134,45 @@ export const gameService = {
     await supabase.from('answers').delete().eq('room_id', roomId);
     await supabase.from('votes').delete().eq('room_id', roomId);
     await supabase.from('players').update({ score: 0, is_ready: true }).eq('room_id', roomId);
-    await supabase.from('rooms').update({ status: 'LOBBY', current_round: 1, current_letter: null, voting_category_index: 0 }).eq('id', roomId);
+    // Oyunu sıfırlarken used_letters dizisini de boşaltıyoruz!
+    await supabase.from('rooms').update({ 
+      status: 'LOBBY', 
+      current_round: 1, 
+      current_letter: null, 
+      voting_category_index: 0,
+      used_letters: [] 
+    }).eq('id', roomId);
   },
 
-  // --- CEVAPLAR & OYLAR ---
+  // --- CEVAPLAR & OYLAR (GÜNCELLENDİ: Upsert Kullanımı) ---
   submitAnswers: async (roomId: string, playerId: string, roundNumber: number, answers: Record<string, string>) => {
-    await supabase.from('answers').insert({ room_id: roomId, player_id: playerId, round_number: roundNumber, answers_json: answers });
+    // "insert" yerine "upsert" kullanıyoruz.
+    // Eğer ağ hatası vs. yüzünden oyuncu iki kere gönderirse veya
+    // süre bitimine çok yakın bir daha denerse, eski cevabın üzerine yazsın (Update etsin),
+    // hata verip patlamasın.
+    // Bunun için tabloda (room_id, player_id, round_number) unique constraint olması lazım ama
+    // şimdilik basit upsert ile id çakışmasını önleyebiliriz veya conflict durumunu yoksayabiliriz.
+    
+    // En güvenlisi: Önce o tur için eski cevabı var mı diye silmek yerine,
+    // doğrudan yeni bir kayıt atmayı denersek ve ID (UUID) otomatik üretiliyorsa çakışmaz.
+    // Ama veri kirliliği olur.
+    
+    // İyileştirme: Önceki cevabı silip yenisini ekleyelim (Transaction gibi)
+    const { error: deleteError } = await supabase.from('answers')
+      .delete()
+      .match({ room_id: roomId, player_id: playerId, round_number: roundNumber });
+      
+    if (deleteError) console.warn("Eski cevap silinemedi (önemsiz):", deleteError);
+
+    await supabase.from('answers').insert({ 
+      room_id: roomId, 
+      player_id: playerId, 
+      round_number: roundNumber, 
+      answers_json: answers 
+    });
   },
 
-  // Akıllı Bekleme Kontrolü
   checkAllAnswersSubmitted: async (roomId: string, roundNumber: number, playerCount: number): Promise<boolean> => {
-    // RPC fonksiyonu yoksa hata vermemesi için try-catch veya direkt sorgu kullanılabilir.
-    // Şimdilik daha güvenli olan count sorgusu yöntemi:
     const { count } = await supabase.from('answers')
       .select('*', { count: 'exact', head: true })
       .eq('room_id', roomId)
@@ -163,7 +202,6 @@ export const gameService = {
     return (data || []).map((v: any) => ({ voterId: v.voter_id, targetPlayerId: v.target_player_id, category: v.category, isVeto: v.is_veto }));
   },
 
-  // Puan Hesaplama (Pişti: 5, Normal: 10, Hata: 0)
   calculateScores: async (roomId: string, roundNumber: number, players: Player[]) => {
     const { data: votes } = await supabase.from('votes').select('*').eq('room_id', roomId).eq('round_number', roundNumber);
     const { data: answersData } = await supabase.from('answers').select('*').eq('room_id', roomId).eq('round_number', roundNumber);
