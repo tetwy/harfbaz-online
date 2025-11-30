@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Lobby from './components/Lobby';
 import WaitingRoom from './components/WaitingRoom';
 import GamePhase from './components/GamePhase';
@@ -15,9 +15,13 @@ const App: React.FC = () => {
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
   const [roundAnswers, setRoundAnswers] = useState<RoundAnswers>({});
   const [currentVotes, setCurrentVotes] = useState<Vote[]>([]); 
+  
+  const isLeavingRef = useRef(false);
 
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isLeavingRef.current) return;
+
       if (status === GameStatus.PLAYING || status === GameStatus.VOTING) {
         e.preventDefault();
         e.returnValue = ''; 
@@ -52,7 +56,18 @@ const App: React.FC = () => {
     const refreshPlayers = async () => {
       const freshPlayers = await gameService.getPlayers(activeRoomId);
       setRoom((prev: any) => prev ? { ...prev, players: freshPlayers } : null);
-      if (me && !freshPlayers.find(p => p.id === me.id)) window.location.reload();
+      
+      // Host devri için senkronizasyon
+      if (me) {
+        const myFreshData = freshPlayers.find(p => p.id === me.id);
+        if (!myFreshData) {
+           window.location.reload();
+        } else {
+           if (myFreshData.isHost !== me.isHost || myFreshData.score !== me.score) {
+              setMe(myFreshData);
+           }
+        }
+      }
     };
 
     const refreshVotes = async (round: number) => {
@@ -83,7 +98,8 @@ const App: React.FC = () => {
           ...prev, status: newRoomData.status, currentLetter: newRoomData.current_letter,
           currentRound: newRoomData.current_round, settings: newRoomData.settings,
           votingCategoryIndex: newRoomData.voting_category_index,
-          revealedPlayers: newRoomData.revealed_players // Yeni veri
+          revealedPlayers: newRoomData.revealed_players,
+          roundStartTime: newRoomData.round_start_time // YENİ EŞLEME
         } : null);
       }
       if (update.type === 'PLAYER_UPDATE') refreshPlayers();
@@ -101,6 +117,10 @@ const App: React.FC = () => {
   };
 
   const handleLeaveRoom = async () => {
+    if (!window.confirm("Oyundan ayrılmak istediğine emin misin?")) {
+        return; 
+    }
+    isLeavingRef.current = true;
     localStorage.removeItem('harfbaz_session');
     if (me?.id) await gameService.leaveRoom(me.id);
     window.location.reload();
@@ -117,25 +137,45 @@ const App: React.FC = () => {
 
   const handleRoundTimeUp = async (myAnswers: Record<string, string>) => {
     if (!me || !activeRoomId || !room) return;
+    
+    // 1. Önce kendi cevaplarımızı gönderelim
     await gameService.submitAnswers(activeRoomId, me.id, room.currentRound, myAnswers);
+    
+    // 2. Eğer Host isek, oyunun ilerleyişini yönetelim
     if (me.isHost) {
-      let attempts = 0;
-      const maxAttempts = 10; 
       const checkInterval = setInterval(async () => {
-         const allSubmitted = await gameService.checkAllAnswersSubmitted(activeRoomId, room.currentRound, room.players.length);
-         attempts++;
-         if (allSubmitted || attempts >= maxAttempts) {
+         // A) Herkes gönderdi mi kontrolü
+         const allSubmitted = await gameService.checkAllAnswersSubmitted(
+            activeRoomId, 
+            room.currentRound, 
+            room.players.length
+         );
+
+         // B) Süre doldu mu kontrolü (Güvenlik Sigortası)
+         // roundStartTime veritabanından gelir. 
+         // Eğer yoksa (hata durumu) hemen geçmemesi için now kullanırız ama normalde vardır.
+         const startTime = room.roundStartTime ? new Date(room.roundStartTime).getTime() : Date.now();
+         const durationMs = room.settings.roundDuration * 1000;
+         const bufferMs = 3000; // 3 saniye tolerans (internet gecikmesi için)
+         const now = Date.now();
+         
+         const isTimeExpired = now > (startTime + durationMs + bufferMs);
+
+         // Eğer herkes gönderdiyse VEYA süre (toleransla birlikte) dolduysa
+         if (allSubmitted || isTimeExpired) {
             clearInterval(checkInterval);
             await gameService.updateStatus(activeRoomId, GameStatus.VOTING);
          }
-      }, 1000); 
+      }, 1000); // Her saniye kontrol et
     }
   };
 
   const handleNextCategory = async () => {
     if (!room || !activeRoomId || !me?.isHost) return;
     const currentIndex = room.votingCategoryIndex || 0;
-    if (currentIndex < CATEGORIES.length - 1) {
+    const currentCategories = room.settings.categories || CATEGORIES;
+
+    if (currentIndex < currentCategories.length - 1) {
       await gameService.updateVotingIndex(activeRoomId, currentIndex + 1);
     } else {
       await gameService.calculateScores(activeRoomId, room.currentRound, room.players);
@@ -149,11 +189,11 @@ const App: React.FC = () => {
 
   const handleToggleVote = async (targetPlayerId: string) => {
     if (!room || !me || !activeRoomId) return;
-    const currentCategory = CATEGORIES[room.votingCategoryIndex || 0];
+    const currentCategories = room.settings.categories || CATEGORIES;
+    const currentCategory = currentCategories[room.votingCategoryIndex || 0];
     await gameService.toggleVote(activeRoomId, room.currentRound, me.id, targetPlayerId, currentCategory);
   };
 
-  // YENİ: Kart Açma
   const handleRevealCard = async (playerId: string) => {
     if (activeRoomId) {
         await gameService.revealCard(activeRoomId, playerId);
@@ -167,7 +207,7 @@ const App: React.FC = () => {
     switch (status) {
       case GameStatus.LOBBY: return <Lobby onJoin={handleJoinRoom} />;
       case GameStatus.WAITING: return room && me ? <WaitingRoom room={room} currentPlayer={me} onStart={handleStartGame} onUpdateSettings={handleUpdateSettings} onLeave={handleLeaveRoom} /> : null;
-      case GameStatus.PLAYING: return room && me && activeRoomId ? <GamePhase letter={room.currentLetter} roundDuration={room.settings.roundDuration} roomId={activeRoomId} playerId={me.id} onTimeUp={handleRoundTimeUp} onLeave={handleLeaveRoom} /> : null;
+      case GameStatus.PLAYING: return room && me && activeRoomId ? <GamePhase letter={room.currentLetter} roundDuration={room.settings.roundDuration} roomId={activeRoomId} playerId={me.id} onTimeUp={handleRoundTimeUp} onLeave={handleLeaveRoom} categories={room.settings.categories} roundStartTime={room.roundStartTime} /> : null;
       case GameStatus.VOTING: return room && me ? (
         <VotingPhase 
             players={room.players} 
@@ -182,8 +222,6 @@ const App: React.FC = () => {
             onVotingComplete={() => {}} 
             initialBotVotes={[]} 
             onLeave={handleLeaveRoom} 
-            
-            // Yeni Proplar
             isHiddenMode={room.settings.isHiddenMode || false}
             revealedPlayers={room.revealedPlayers || []}
             onRevealCard={handleRevealCard}

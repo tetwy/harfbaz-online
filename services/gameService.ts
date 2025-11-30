@@ -11,20 +11,42 @@ const mapDbPlayer = (dbPlayer: any): Player => ({
   isReady: dbPlayer.is_ready
 });
 
+// YARDIMCI: Kriptografik Güvenli Rastgele Index
+const getSecureRandomIndex = (max: number): number => {
+  const array = new Uint32Array(1);
+  window.crypto.getRandomValues(array);
+  return array[0] % max;
+};
+
 // YARDIMCI: Kullanılmamış Harf Seç
 const getUniqueRandomLetter = (usedLetters: string[]): string => {
-  const availableLetters = ALPHABET.split('').filter(letter => !usedLetters.includes(letter));
-  if (availableLetters.length === 0) return ALPHABET[Math.floor(Math.random() * ALPHABET.length)];
-  return availableLetters[Math.floor(Math.random() * availableLetters.length)];
+  let availableLetters = ALPHABET.split('').filter(letter => !usedLetters.includes(letter));
+  if (availableLetters.length === 0) {
+    availableLetters = ALPHABET.split('');
+  }
+  const randomIndex = getSecureRandomIndex(availableLetters.length);
+  return availableLetters[randomIndex];
+};
+
+// YARDIMCI: Fisher-Yates Shuffle
+const shuffleArray = (array: string[]) => {
+  const newArr = [...array];
+  for (let i = newArr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [newArr[i], newArr[j]] = [newArr[j], newArr[i]];
+  }
+  return newArr;
 };
 
 export const gameService = {
   // --- ODA YÖNETİMİ ---
   createRoom: async (hostName: string, avatar: string, settings: RoomSettings) => {
     const roomCode = Math.random().toString(36).substring(2, 6).toUpperCase();
-    
-    // Varsayılan olarak isHiddenMode false olsun
-    const initialSettings = { ...settings, isHiddenMode: settings.isHiddenMode || false };
+    const initialSettings = { 
+      ...settings, 
+      isHiddenMode: settings.isHiddenMode || false,
+      categories: shuffleArray(CATEGORIES)
+    };
 
     const { data: roomData, error: roomError } = await supabase
       .from('rooms')
@@ -34,7 +56,7 @@ export const gameService = {
         settings: initialSettings, 
         voting_category_index: 0, 
         used_letters: [],
-        revealed_players: [] // Başlangıçta kimse açık değil
+        revealed_players: []
       })
       .select().single();
 
@@ -42,13 +64,13 @@ export const gameService = {
     const { data: playerData, error: playerError } = await supabase.from('players').insert({ room_id: roomData.id, name: hostName, avatar, is_host: true, is_ready: true }).select().single();
     if (playerError) throw playerError;
     
-    // Mapping
     const mappedRoom = {
       ...roomData,
       currentLetter: roomData.current_letter,
       currentRound: roomData.current_round,
       votingCategoryIndex: roomData.voting_category_index,
-      revealedPlayers: roomData.revealed_players || [], // DB'den gelen veri
+      revealedPlayers: roomData.revealed_players || [],
+      roundStartTime: roomData.round_start_time, // YENİ EŞLEME
       players: [mapDbPlayer(playerData)]
     };
 
@@ -68,6 +90,7 @@ export const gameService = {
       currentRound: roomData.current_round,
       votingCategoryIndex: roomData.voting_category_index,
       revealedPlayers: roomData.revealed_players || [],
+      roundStartTime: roomData.round_start_time, // YENİ EŞLEME
       players: (allPlayers || []).map(mapDbPlayer)
     };
 
@@ -87,19 +110,46 @@ export const gameService = {
       currentRound: roomData.current_round,
       votingCategoryIndex: roomData.voting_category_index,
       revealedPlayers: roomData.revealed_players || [],
+      roundStartTime: roomData.round_start_time, // YENİ EŞLEME
       players: (allPlayers || []).map(mapDbPlayer)
     };
 
     return { room: mappedRoom, player: mapDbPlayer(playerData) };
   },
 
+  // --- GÜVENLİ LEAVE & HOST TRANSFERİ ---
   leaveRoom: async (playerId: string) => {
     try {
-      const { data: player, error: fetchError } = await supabase.from('players').select('id').eq('id', playerId).maybeSingle();
-      if (fetchError || !player) return;
+      const { data: leavingPlayer } = await supabase
+        .from('players')
+        .select('room_id, is_host')
+        .eq('id', playerId)
+        .maybeSingle();
+
+      if (!leavingPlayer) return;
+
       await supabase.from('players').delete().eq('id', playerId);
+
+      if (leavingPlayer.is_host && leavingPlayer.room_id) {
+        const { data: newHostCandidate } = await supabase
+          .from('players')
+          .select('id')
+          .eq('room_id', leavingPlayer.room_id)
+          .order('created_at', { ascending: true })
+          .limit(1)
+          .maybeSingle();
+
+        if (newHostCandidate) {
+          await supabase
+            .from('players')
+            .update({ is_host: true })
+            .eq('id', newHostCandidate.id);
+        } else {
+            await supabase.from('rooms').delete().eq('id', leavingPlayer.room_id);
+        }
+      }
     } catch (err) {
-      console.error("Hata:", err);
+      console.error("Odadan ayrılma hatası:", err);
     }
   },
 
@@ -110,14 +160,17 @@ export const gameService = {
 
   // --- OYUN AKIŞI ---
   startGame: async (roomId: string) => {
-    const letter = ALPHABET[Math.floor(Math.random() * ALPHABET.length)];
+    const letter = getUniqueRandomLetter([]); 
+    const now = new Date().toISOString(); // ZAMAN DAMGASI
+
     await supabase.from('rooms').update({ 
       status: 'PLAYING', 
       current_letter: letter, 
       current_round: 1, 
       voting_category_index: 0,
       used_letters: [letter],
-      revealed_players: [] // Oyuncuların gizliliğini sıfırla
+      revealed_players: [],
+      round_start_time: now // KAYDET
     }).eq('id', roomId);
   },
 
@@ -128,6 +181,7 @@ export const gameService = {
       const { data: roomData } = await supabase.from('rooms').select('used_letters').eq('id', roomId).single();
       const usedLetters = roomData?.used_letters || [];
       const letter = getUniqueRandomLetter(usedLetters);
+      const now = new Date().toISOString(); // ZAMAN DAMGASI
 
       await supabase.from('rooms').update({ 
         status: 'PLAYING', 
@@ -135,15 +189,13 @@ export const gameService = {
         current_round: currentRound + 1, 
         voting_category_index: 0,
         used_letters: [...usedLetters, letter],
-        revealed_players: [] // Her turda gizliliği tekrar kapat
+        revealed_players: [],
+        round_start_time: now // KAYDET
       }).eq('id', roomId);
     }
   },
 
-  // --- YENİ: KART AÇMA (REVEAL) ---
   revealCard: async (roomId: string, playerId: string) => {
-    // Mevcut revealed_players listesini alıp üzerine ekleyeceğiz
-    // Not: Postgres array_append fonksiyonu ile daha atomik yapılabilir ama şimdilik bu yeterli
     const { data: room } = await supabase.from('rooms').select('revealed_players').eq('id', roomId).single();
     const currentRevealed = room?.revealed_players || [];
     
@@ -158,7 +210,7 @@ export const gameService = {
     const updateData: any = { status };
     if (status === 'VOTING') {
         updateData.voting_category_index = 0;
-        updateData.revealed_players = []; // Oylama başlarken herkes gizli başlasın
+        updateData.revealed_players = []; 
     }
     await supabase.from('rooms').update(updateData).eq('id', roomId);
   },
@@ -168,30 +220,36 @@ export const gameService = {
   },
 
   updateVotingIndex: async (roomId: string, index: number) => {
-    // Kategori değişince revealed_players sıfırlanmalı mı? 
-    // Hayır, bir tur boyunca açık kalabilir veya her kategoride tekrar gizlenebilir.
-    // Kullanıcı deneyimi için her kategoride tekrar gizlenmesi daha heyecanlıdır.
     await supabase.from('rooms').update({ 
         voting_category_index: index,
-        revealed_players: [] // Yeni kategoriye geçince yine herkes gizli
+        revealed_players: [] 
     }).eq('id', roomId);
   },
 
   resetGame: async (roomId: string) => {
+    const { data: currentRoom } = await supabase.from('rooms').select('settings').eq('id', roomId).single();
+    const newSettings = {
+      ...(currentRoom?.settings || {}),
+      categories: shuffleArray(CATEGORIES)
+    };
+
     await supabase.from('answers').delete().eq('room_id', roomId);
     await supabase.from('votes').delete().eq('room_id', roomId);
     await supabase.from('players').update({ score: 0, is_ready: true }).eq('room_id', roomId);
+    
     await supabase.from('rooms').update({ 
       status: 'LOBBY', 
       current_round: 1, 
       current_letter: null, 
       voting_category_index: 0, 
       used_letters: [],
-      revealed_players: []
+      revealed_players: [],
+      round_start_time: null, // SIFIRLA
+      settings: newSettings 
     }).eq('id', roomId);
   },
 
-  // --- CEVAPLAR & OYLAR ---
+  // --- CEVAP VE SKOR ---
   submitAnswers: async (roomId: string, playerId: string, roundNumber: number, answers: Record<string, string>) => {
     const { error: deleteError } = await supabase.from('answers').delete().match({ room_id: roomId, player_id: playerId, round_number: roundNumber });
     if (deleteError) console.warn("Silme hatası:", deleteError);

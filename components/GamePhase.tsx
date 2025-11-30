@@ -10,6 +10,8 @@ interface GamePhaseProps {
   playerId: string;
   onTimeUp: (answers: Record<string, string>) => void;
   onLeave: () => void;
+  categories: string[];
+  roundStartTime?: string; // YENİ PROP
 }
 
 const getCategoryIcon = (category: string) => {
@@ -28,69 +30,108 @@ const getCategoryIcon = (category: string) => {
   }
 };
 
-const GamePhase: React.FC<GamePhaseProps> = ({ letter, roundDuration, roomId, playerId, onTimeUp, onLeave }) => {
-  const [timeLeft, setTimeLeft] = useState(roundDuration);
+const GamePhase: React.FC<GamePhaseProps> = ({ 
+  letter, 
+  roundDuration, 
+  roomId, 
+  playerId, 
+  onTimeUp, 
+  onLeave, 
+  categories,
+  roundStartTime // YENİ
+}) => {
+  
+  // YENİ: Süre hesaplama fonksiyonu (Sunucu zamanına göre)
+  const calculateInitialTime = () => {
+    if (!roundStartTime) return roundDuration;
+
+    const start = new Date(roundStartTime).getTime();
+    const now = Date.now();
+    // (Şu an - Başlangıç) = Geçen süre (ms). Saniyeye çevirip toplamdan çıkar.
+    const elapsedSeconds = (now - start) / 1000;
+    const remaining = Math.ceil(roundDuration - elapsedSeconds);
+
+    return remaining > 0 ? remaining : 0;
+  };
+
+  const [timeLeft, setTimeLeft] = useState(calculateInitialTime());
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [submitted, setSubmitted] = useState(false);
   
-  // Referans kullanarak en güncel cevaplara her an erişebilmeyi sağlıyoruz
-  // Bu, closure (kapsam) sorunlarını önler.
   const answersRef = useRef(answers);
+  const submittedRef = useRef(submitted);
 
   useEffect(() => {
     answersRef.current = answers;
   }, [answers]);
 
   useEffect(() => {
-    // Eğer süre dolduysa (veya zaten 0 geldiyse) hemen bitir
-    if (timeLeft <= 0) {
-      if (!submitted) {
-        handleFinish();
+    submittedRef.current = submitted;
+  }, [submitted]);
+
+  // Strict Mode Fix & Unmount Koruması
+  // Bileşen ekrandan kaldırılırken (örn: host oyunu bitirdiğinde) otomatik gönderim yapar.
+  // Ancak 1 saniyeden kısa sürede kapanırsa (React Strict Mode testi) işlem yapmaz.
+  useEffect(() => {
+    const mountTime = Date.now();
+    return () => {
+      const timePassed = Date.now() - mountTime;
+      if (!submittedRef.current && timePassed > 1000) {
+        onTimeUp(answersRef.current);
       }
-      return;
+    };
+  }, []); 
+
+  // Senkronizasyon: Eğer sunucudan yeni bir başlangıç zamanı gelirse süreyi düzelt.
+  useEffect(() => {
+      setTimeLeft(calculateInitialTime());
+  }, [roundStartTime, roundDuration]);
+
+  // Zamanlayıcı Döngüsü
+  useEffect(() => {
+    // Başlangıçta süre zaten bitikse hemen bitir
+    if (calculateInitialTime() <= 0) {
+        if (!submittedRef.current) handleFinish();
+        return;
     }
 
     const timer = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          // Süre 0 olduğunda, o anki state'i değil, ref'teki güncel cevapları gönder
-          if (!submitted) {
-             // Otomatik bitişte "submitted" state'ini burada set etmek yerine
-             // handleFinish fonksiyonunu çağırıyoruz ki o yapsın.
-             // Ancak useEffect içinde state update bazen race condition yaratabilir.
-             // O yüzden burayı dikkatli yönetiyoruz.
-             handleFinish(); 
-          }
-          return 0;
+      // ESKİ: setTimeLeft(prev => prev - 1); -> Bu tarayıcı donunca duruyordu.
+      
+      // YENİ: Her saniye gerçek zamanı yeniden hesapla.
+      const realRemainingTime = calculateInitialTime();
+      setTimeLeft(realRemainingTime);
+
+      if (realRemainingTime <= 0) {
+        clearInterval(timer);
+        if (!submittedRef.current) {
+           handleFinish();
         }
-        return prev - 1;
-      });
+      }
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [timeLeft, submitted]); // submitted bağımlılığı önemli
+  }, [roundStartTime, roundDuration]); // roundStartTime değişirse timer'ı resetle
 
   const handleInputChange = (category: string, value: string) => {
     setAnswers(prev => ({ ...prev, [category]: value }));
   };
 
   const handleFinish = () => {
-    // Çifte gönderimi engelle
-    if (submitted) return;
+    if (submittedRef.current) return;
     setSubmitted(true);
-    
-    // Ref kullanarak en son girilen harfleri garanti altına alıyoruz
+    submittedRef.current = true;
     onTimeUp(answersRef.current);
   };
 
-  const progressPercentage = (timeLeft / roundDuration) * 100;
+  const progressPercentage = Math.max(0, Math.min(100, (timeLeft / roundDuration) * 100));
   const isUrgent = timeLeft <= 10;
+  const displayCategories = categories && categories.length > 0 ? categories : CATEGORIES;
 
   return (
     <div className="max-w-5xl w-full mx-auto pb-32 animate-fade-in px-4 relative">
       
-      {/* HUD HEADER - Mobilde daha kompakt */}
+      {/* HUD HEADER */}
       <div className="sticky top-2 md:top-4 z-30 mb-4 md:mb-8">
         <div className="bg-slate-900/95 backdrop-blur-xl border border-slate-700/50 shadow-2xl shadow-black/50 rounded-xl md:rounded-2xl p-3 md:p-4 flex items-center gap-3 md:gap-6 relative overflow-hidden">
           
@@ -102,7 +143,7 @@ const GamePhase: React.FC<GamePhaseProps> = ({ letter, roundDuration, roomId, pl
             ></div>
           </div>
 
-          {/* Letter Box - Mobilde küçültüldü */}
+          {/* Letter Box */}
           <div className="flex-shrink-0 relative group">
             <div className="absolute inset-0 bg-gradient-to-br from-brand-400 to-purple-600 rounded-lg md:rounded-xl blur opacity-75 group-hover:opacity-100 transition-opacity animate-pulse"></div>
             <div className="relative w-12 h-12 md:w-20 md:h-20 bg-slate-900 rounded-lg md:rounded-xl border border-white/10 flex flex-col items-center justify-center shadow-2xl">
@@ -136,18 +177,17 @@ const GamePhase: React.FC<GamePhaseProps> = ({ letter, roundDuration, roomId, pl
         </div>
       </div>
 
-      {/* INPUTS GRID - Mobilde daha kompakt */}
+      {/* INPUTS GRID */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-6">
-        {CATEGORIES.map((category) => (
+        {displayCategories.map((category) => (
           <div 
             key={category}
             className="group relative bg-slate-800/40 hover:bg-slate-800/60 border border-slate-700/50 rounded-xl md:rounded-2xl p-3 md:p-4 transition-all duration-300 focus-within:border-brand-500 focus-within:bg-slate-900 focus-within:shadow-[0_0_20px_rgba(124,58,237,0.25)]"
           >
             <div className="flex flex-row md:flex-col h-full justify-between items-center md:items-stretch gap-3 md:gap-2">
               
-              {/* Label & Icon - Mobilde sola hizalı */}
+              {/* Label & Icon */}
               <div className="flex items-center gap-2 md:justify-between min-w-[80px] md:min-w-0">
-                {/* Mobilde ikon solda olsun */}
                 <div className="md:hidden text-slate-500 group-focus-within:text-brand-400">
                     {getCategoryIcon(category)}
                 </div>
@@ -156,7 +196,6 @@ const GamePhase: React.FC<GamePhaseProps> = ({ letter, roundDuration, roomId, pl
                   {category}
                 </label>
 
-                {/* Masaüstünde ikon sağda olsun */}
                 <div className="hidden md:block">
                     {getCategoryIcon(category)}
                 </div>
@@ -181,7 +220,6 @@ const GamePhase: React.FC<GamePhaseProps> = ({ letter, roundDuration, roomId, pl
       <div className="fixed bottom-0 left-0 right-0 p-4 md:p-6 bg-gradient-to-t from-slate-900 via-slate-900/95 to-transparent z-20 backdrop-blur-[2px]">
         <div className="flex gap-3 max-w-lg mx-auto w-full items-stretch">
             
-            {/* SOL: ÇIKIŞ BUTONU (Kare İkon) */}
             <button
                 onClick={onLeave}
                 className="flex-none w-12 md:w-16 flex items-center justify-center rounded-xl md:rounded-2xl bg-slate-800/80 border border-slate-700 text-slate-400 hover:text-red-400 hover:bg-slate-800 hover:border-red-500/50 transition-all shadow-xl backdrop-blur-sm active:scale-95"
@@ -190,7 +228,6 @@ const GamePhase: React.FC<GamePhaseProps> = ({ letter, roundDuration, roomId, pl
                 <LogOut className="w-5 h-5 md:w-6 md:h-6" />
             </button>
 
-            {/* SAĞ: GÖNDER BUTONU (Geniş) */}
             <Button 
               onClick={handleFinish} 
               disabled={submitted}

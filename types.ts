@@ -32,7 +32,8 @@ export interface Room {
   settings: RoomSettings;
   createdAt: string;
   votingCategoryIndex?: number;
-  revealedPlayers: string[]; // YENİ: Kartını açan oyuncuların ID listesi
+  revealedPlayers: string[];
+  roundStartTime?: string;
 }
 
 export interface RoundAnswers {
