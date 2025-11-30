@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Timer, Send, User, MapPin, Cat, Flower2, Package, Star, Globe, Briefcase, Utensils, Clapperboard, LogOut } from 'lucide-react';
-import { Button } from './UI';
-import { CATEGORIES } from '../constants';
+import { Button } from './UI'; // Dosya yolu düzeltildi
+import { CATEGORIES } from '../constants'; // Dosya yolu düzeltildi
 
 interface GamePhaseProps {
   letter: string;
@@ -11,7 +11,7 @@ interface GamePhaseProps {
   onTimeUp: (answers: Record<string, string>) => void;
   onLeave: () => void;
   categories: string[];
-  roundStartTime?: string; // YENİ PROP
+  roundStartTime?: string; 
 }
 
 const getCategoryIcon = (category: string) => {
@@ -38,29 +38,31 @@ const GamePhase: React.FC<GamePhaseProps> = ({
   onTimeUp, 
   onLeave, 
   categories,
-  roundStartTime // YENİ
+  roundStartTime 
 }) => {
   
-  // YENİ: Süre hesaplama fonksiyonu (Sunucu zamanına göre)
+  // Süre hesaplama fonksiyonu
   const calculateInitialTime = () => {
     if (!roundStartTime) return roundDuration;
 
     const start = new Date(roundStartTime).getTime();
     const now = Date.now();
-    // (Şu an - Başlangıç) = Geçen süre (ms). Saniyeye çevirip toplamdan çıkar.
     const elapsedSeconds = (now - start) / 1000;
     const remaining = Math.ceil(roundDuration - elapsedSeconds);
 
     return remaining > 0 ? remaining : 0;
   };
 
+  // State
   const [timeLeft, setTimeLeft] = useState(calculateInitialTime());
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [submitted, setSubmitted] = useState(false);
   
+  // Refs (Güncel verilere erişim için)
   const answersRef = useRef(answers);
   const submittedRef = useRef(submitted);
 
+  // Ref'leri senkronize et
   useEffect(() => {
     answersRef.current = answers;
   }, [answers]);
@@ -69,36 +71,28 @@ const GamePhase: React.FC<GamePhaseProps> = ({
     submittedRef.current = submitted;
   }, [submitted]);
 
-  // Strict Mode Fix & Unmount Koruması
-  // Bileşen ekrandan kaldırılırken (örn: host oyunu bitirdiğinde) otomatik gönderim yapar.
-  // Ancak 1 saniyeden kısa sürede kapanırsa (React Strict Mode testi) işlem yapmaz.
+  // UNMOUNT KORUMASI: Bileşen ekrandan kalkarken (örn: Host oylamayı başlattığında)
+  // eğer hala cevapları göndermediysek, otomatik gönder.
+  // Not: Strict Mode kontrolünü (1000ms) kaldırdık çünkü canlıda sorun yaratabilir
+  // ve merkezi zamanlama zaten yanlış gönderimleri engelliyor.
   useEffect(() => {
-    const mountTime = Date.now();
     return () => {
-      const timePassed = Date.now() - mountTime;
-      if (!submittedRef.current && timePassed > 1000) {
+      if (!submittedRef.current) {
+        // console.log("Unmount tetiklendi, cevaplar gönderiliyor...");
         onTimeUp(answersRef.current);
       }
     };
   }, []); 
 
-  // Senkronizasyon: Eğer sunucudan yeni bir başlangıç zamanı gelirse süreyi düzelt.
+  // ZAMANLAMA VE OTOMATİK BİTİŞ
   useEffect(() => {
-      setTimeLeft(calculateInitialTime());
-  }, [roundStartTime, roundDuration]);
-
-  // Zamanlayıcı Döngüsü
-  useEffect(() => {
-    // Başlangıçta süre zaten bitikse hemen bitir
+    // Eğer component mount olduğunda süre zaten bitikse hemen bitir
     if (calculateInitialTime() <= 0) {
         if (!submittedRef.current) handleFinish();
         return;
     }
 
     const timer = setInterval(() => {
-      // ESKİ: setTimeLeft(prev => prev - 1); -> Bu tarayıcı donunca duruyordu.
-      
-      // YENİ: Her saniye gerçek zamanı yeniden hesapla.
       const realRemainingTime = calculateInitialTime();
       setTimeLeft(realRemainingTime);
 
@@ -111,7 +105,7 @@ const GamePhase: React.FC<GamePhaseProps> = ({
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [roundStartTime, roundDuration]); // roundStartTime değişirse timer'ı resetle
+  }, [roundStartTime, roundDuration]);
 
   const handleInputChange = (category: string, value: string) => {
     setAnswers(prev => ({ ...prev, [category]: value }));
@@ -119,8 +113,12 @@ const GamePhase: React.FC<GamePhaseProps> = ({
 
   const handleFinish = () => {
     if (submittedRef.current) return;
+    
+    // Optimistik güncelleme: Hemen butonun durumunu değiştir
     setSubmitted(true);
     submittedRef.current = true;
+    
+    // Cevapları gönder
     onTimeUp(answersRef.current);
   };
 

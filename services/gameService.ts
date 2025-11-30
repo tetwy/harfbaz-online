@@ -38,9 +38,25 @@ const shuffleArray = (array: string[]) => {
   return newArr;
 };
 
+// YARDIMCI: Anonim Auth Kontrolü
+// Kullanıcının sessizce sisteme girmesini ve bir User ID almasını sağlar.
+const ensureAuth = async () => {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session) return session.user.id;
+
+  const { data, error } = await supabase.auth.signInAnonymously();
+  if (error) throw error;
+  if (!data.user) throw new Error("Kullanıcı oluşturulamadı");
+  
+  return data.user.id;
+};
+
 export const gameService = {
   // --- ODA YÖNETİMİ ---
   createRoom: async (hostName: string, avatar: string, settings: RoomSettings) => {
+    // 1. Önce kullanıcının giriş yapmasını sağla ve ID'sini al
+    const userId = await ensureAuth();
+
     const roomCode = Math.random().toString(36).substring(2, 6).toUpperCase();
     const initialSettings = { 
       ...settings, 
@@ -61,7 +77,21 @@ export const gameService = {
       .select().single();
 
     if (roomError) throw roomError;
-    const { data: playerData, error: playerError } = await supabase.from('players').insert({ room_id: roomData.id, name: hostName, avatar, is_host: true, is_ready: true }).select().single();
+
+    // 2. Oyuncuyu eklerken ID'yi ELLE (userId olarak) veriyoruz.
+    // Böylece players tablosundaki "id" sütunu ile auth.uid() eşleşmiş oluyor.
+    const { data: playerData, error: playerError } = await supabase
+      .from('players')
+      .insert({ 
+        id: userId, // Auth ID'sini kullan
+        room_id: roomData.id, 
+        name: hostName, 
+        avatar, 
+        is_host: true, 
+        is_ready: true 
+      })
+      .select().single();
+
     if (playerError) throw playerError;
     
     const mappedRoom = {
@@ -70,7 +100,7 @@ export const gameService = {
       currentRound: roomData.current_round,
       votingCategoryIndex: roomData.voting_category_index,
       revealedPlayers: roomData.revealed_players || [],
-      roundStartTime: roomData.round_start_time, // YENİ EŞLEME
+      roundStartTime: roomData.round_start_time,
       players: [mapDbPlayer(playerData)]
     };
 
@@ -78,10 +108,27 @@ export const gameService = {
   },
 
   joinRoom: async (roomCode: string, playerName: string, avatar: string) => {
+    // 1. Giriş yap ve ID al
+    const userId = await ensureAuth();
+
     const { data: roomData, error: roomFetchError } = await supabase.from('rooms').select('*').eq('code', roomCode).single();
     if (roomFetchError || !roomData) throw new Error("Oda bulunamadı!");
-    const { data: playerData, error: playerError } = await supabase.from('players').insert({ room_id: roomData.id, name: playerName, avatar, is_host: false, is_ready: true }).select().single();
+
+    // 2. Oyuncuyu kendi Auth ID'si ile ekle
+    const { data: playerData, error: playerError } = await supabase
+      .from('players')
+      .insert({ 
+        id: userId, // Auth ID'sini kullan
+        room_id: roomData.id, 
+        name: playerName, 
+        avatar, 
+        is_host: false, 
+        is_ready: true 
+      })
+      .select().single();
+
     if (playerError) throw playerError;
+    
     const { data: allPlayers } = await supabase.from('players').select('*').eq('room_id', roomData.id);
     
     const mappedRoom = {
@@ -90,7 +137,7 @@ export const gameService = {
       currentRound: roomData.current_round,
       votingCategoryIndex: roomData.voting_category_index,
       revealedPlayers: roomData.revealed_players || [],
-      roundStartTime: roomData.round_start_time, // YENİ EŞLEME
+      roundStartTime: roomData.round_start_time,
       players: (allPlayers || []).map(mapDbPlayer)
     };
 
@@ -98,6 +145,14 @@ export const gameService = {
   },
 
   reconnect: async (roomId: string, playerId: string) => {
+    // Reconnect durumunda da oturumu kontrol etmek iyi bir pratiktir
+    const userId = await ensureAuth();
+    if (userId !== playerId) {
+      // Eğer localStorage'daki ID ile Auth ID uyuşmazsa (nadir durum),
+      // burada bir mantık kurulabilir ama şimdilik devam ediyoruz.
+      // console.warn("Auth ID mismatch"); 
+    }
+
     const { data: roomData } = await supabase.from('rooms').select('*').eq('id', roomId).single();
     if (!roomData) return null;
     const { data: playerData } = await supabase.from('players').select('*').eq('id', playerId).single();
@@ -110,7 +165,7 @@ export const gameService = {
       currentRound: roomData.current_round,
       votingCategoryIndex: roomData.voting_category_index,
       revealedPlayers: roomData.revealed_players || [],
-      roundStartTime: roomData.round_start_time, // YENİ EŞLEME
+      roundStartTime: roomData.round_start_time,
       players: (allPlayers || []).map(mapDbPlayer)
     };
 
@@ -161,7 +216,7 @@ export const gameService = {
   // --- OYUN AKIŞI ---
   startGame: async (roomId: string) => {
     const letter = getUniqueRandomLetter([]); 
-    const now = new Date().toISOString(); // ZAMAN DAMGASI
+    const now = new Date().toISOString(); 
 
     await supabase.from('rooms').update({ 
       status: 'PLAYING', 
@@ -170,7 +225,7 @@ export const gameService = {
       voting_category_index: 0,
       used_letters: [letter],
       revealed_players: [],
-      round_start_time: now // KAYDET
+      round_start_time: now 
     }).eq('id', roomId);
   },
 
@@ -181,7 +236,7 @@ export const gameService = {
       const { data: roomData } = await supabase.from('rooms').select('used_letters').eq('id', roomId).single();
       const usedLetters = roomData?.used_letters || [];
       const letter = getUniqueRandomLetter(usedLetters);
-      const now = new Date().toISOString(); // ZAMAN DAMGASI
+      const now = new Date().toISOString(); 
 
       await supabase.from('rooms').update({ 
         status: 'PLAYING', 
@@ -190,7 +245,7 @@ export const gameService = {
         voting_category_index: 0,
         used_letters: [...usedLetters, letter],
         revealed_players: [],
-        round_start_time: now // KAYDET
+        round_start_time: now 
       }).eq('id', roomId);
     }
   },
@@ -244,16 +299,29 @@ export const gameService = {
       voting_category_index: 0, 
       used_letters: [],
       revealed_players: [],
-      round_start_time: null, // SIFIRLA
+      round_start_time: null, 
       settings: newSettings 
     }).eq('id', roomId);
   },
 
   // --- CEVAP VE SKOR ---
   submitAnswers: async (roomId: string, playerId: string, roundNumber: number, answers: Record<string, string>) => {
+    // Önceki cevabı temizle
     const { error: deleteError } = await supabase.from('answers').delete().match({ room_id: roomId, player_id: playerId, round_number: roundNumber });
     if (deleteError) console.warn("Silme hatası:", deleteError);
-    await supabase.from('answers').insert({ room_id: roomId, player_id: playerId, round_number: roundNumber, answers_json: answers });
+    
+    // Insert işleminin sonucunu kontrol et
+    const { error: insertError } = await supabase.from('answers').insert({ 
+      room_id: roomId, 
+      player_id: playerId, 
+      round_number: roundNumber, 
+      answers_json: answers 
+    });
+
+    if (insertError) {
+      console.error("Cevap gönderme KRİTİK HATA:", insertError);
+      throw insertError; 
+    }
   },
 
   checkAllAnswersSubmitted: async (roomId: string, roundNumber: number, playerCount: number): Promise<boolean> => {
