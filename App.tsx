@@ -16,10 +16,14 @@ const App: React.FC = () => {
   const [roundAnswers, setRoundAnswers] = useState<RoundAnswers>({});
   const [currentVotes, setCurrentVotes] = useState<Vote[]>([]);
   
-  // YENİ: Yükleniyor kilidi (Çift tıklamayı önler)
   const [loading, setLoading] = useState(false);
   
   const isLeavingRef = useRef(false);
+
+  // YENİ EKLENEN KISIM: Sunucudan güncelleme gelince butonu tekrar aktif et
+  useEffect(() => {
+    setLoading(false);
+  }, [room?.votingCategoryIndex, room?.currentRound, status]);
 
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
@@ -60,7 +64,6 @@ const App: React.FC = () => {
       const freshPlayers = await gameService.getPlayers(activeRoomId);
       setRoom((prev: any) => prev ? { ...prev, players: freshPlayers } : null);
       
-      // Host devri için senkronizasyon
       if (me) {
         const myFreshData = freshPlayers.find(p => p.id === me.id);
         if (!myFreshData) {
@@ -141,20 +144,16 @@ const App: React.FC = () => {
   const handleRoundTimeUp = async (myAnswers: Record<string, string>) => {
     if (!me || !activeRoomId || !room) return;
     
-    // 1. Önce kendi cevaplarımızı gönderelim
     await gameService.submitAnswers(activeRoomId, me.id, room.currentRound, myAnswers);
     
-    // 2. Eğer Host isek, oyunun ilerleyişini yönetelim
     if (me.isHost) {
       const checkInterval = setInterval(async () => {
-         // A) Herkes gönderdi mi kontrolü
          const allSubmitted = await gameService.checkAllAnswersSubmitted(
             activeRoomId, 
             room.currentRound, 
             room.players.length
          );
 
-         // B) Süre doldu mu kontrolü
          const startTime = room.roundStartTime ? new Date(room.roundStartTime).getTime() : Date.now();
          const durationMs = room.settings.roundDuration * 1000;
          const bufferMs = 3000;
@@ -170,12 +169,12 @@ const App: React.FC = () => {
     }
   };
 
-  // GÜNCELLENDİ: Loading kontrolü eklendi
+  // DÜZELTİLEN KISIM: finally bloğu kaldırıldı
   const handleNextCategory = async () => {
     if (!room || !activeRoomId || !me?.isHost) return;
-    if (loading) return; // Zaten işlem yapılıyorsa dur
+    if (loading) return; 
 
-    setLoading(true); // Kilitle
+    setLoading(true); 
     try {
         const currentIndex = room.votingCategoryIndex || 0;
         const currentCategories = room.settings.categories || CATEGORIES;
@@ -183,7 +182,6 @@ const App: React.FC = () => {
         if (currentIndex < currentCategories.length - 1) {
           await gameService.updateVotingIndex(activeRoomId, currentIndex + 1);
         } else {
-          // Paralel puan hesaplama
           await gameService.calculateScores(activeRoomId, room.currentRound, room.players);
           
           if (room.currentRound < room.settings.totalRounds) {
@@ -194,8 +192,7 @@ const App: React.FC = () => {
         }
     } catch (e) {
         console.error("Kategori geçiş hatası:", e);
-    } finally {
-        setLoading(false); // Kilidi aç
+        setLoading(false); // Sadece hatada kilidi aç
     }
   };
 
@@ -237,7 +234,7 @@ const App: React.FC = () => {
             isHiddenMode={room.settings.isHiddenMode || false}
             revealedPlayers={room.revealedPlayers || []}
             onRevealCard={handleRevealCard}
-            isLoading={loading} // YENİ: Prop olarak geçirildi
+            isLoading={loading} 
         />
       ) : null;
       case GameStatus.SCORING:
