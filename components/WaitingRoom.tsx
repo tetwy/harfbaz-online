@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Copy, Users, Play, Crown, Clock, Hash, Settings, Check, LogOut, Eye, EyeOff } from 'lucide-react'; // Eye, EyeOff eklendi
+import { Copy, Users, Play, Crown, Clock, Hash, Settings, Check, LogOut, Eye, EyeOff } from 'lucide-react';
 import { Button, Card, Badge } from './UI';
 import { Room, Player, RoomSettings } from '../types';
 
@@ -33,7 +33,6 @@ const WaitingRoom: React.FC<WaitingRoomProps> = ({ room, currentPlayer, onStart,
     onUpdateSettings({ ...room.settings, [key]: value });
   };
 
-  // Yeni: Gizli Mod Toggle
   const toggleHiddenMode = () => {
     if (!currentPlayer.isHost) return;
     onUpdateSettings({ ...room.settings, isHiddenMode: !room.settings.isHiddenMode });
@@ -89,63 +88,78 @@ const WaitingRoom: React.FC<WaitingRoomProps> = ({ room, currentPlayer, onStart,
         
         {/* LEFT PANEL: Room Info & Settings */}
         <div className="lg:col-span-4 space-y-4 md:space-y-6">
-          <Card className="bg-slate-900/50 border-brand-500/20 shadow-xl shadow-brand-900/10 overflow-hidden relative group">
-            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-brand-400 to-purple-500"></div>
-            <div className="text-center space-y-3 md:space-y-4 py-2 md:py-4">
-              <span className="text-[10px] md:text-xs font-bold text-slate-400 tracking-widest uppercase">
-                {copied ? 'KOPYALANDI!' : 'ODA KODU'}
-              </span>
+          
+          {/* --- ODA KODU KARTI (SADECE HOST İÇİN) --- */}
+          {currentPlayer.isHost ? (
+            <Card className="bg-slate-900/50 border-brand-500/20 shadow-xl shadow-brand-900/10 overflow-hidden relative group">
+                <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-brand-400 to-purple-500"></div>
+                <div className="text-center space-y-3 md:space-y-4 py-2 md:py-4">
+                <span className="text-[10px] md:text-xs font-bold text-slate-400 tracking-widest uppercase">
+                    {copied ? 'KOPYALANDI!' : 'ODA KODU'}
+                </span>
 
-              {/* MOBİL GÖRÜNÜM: Çıkış - Kod - Kopyala */}
-              <div className="flex md:hidden items-center justify-between gap-2 px-1">
-                 <button
-                   onClick={onLeave}
-                   className="w-12 h-12 flex-shrink-0 flex items-center justify-center rounded-xl bg-red-500/10 text-red-500 border border-red-500/20 active:scale-95 transition-all shadow-lg shadow-red-900/10"
-                   title="Odadan Çık"
-                 >
-                   <LogOut size={20} />
-                 </button>
+                {/* MOBİL GÖRÜNÜM: Çıkış - Kod - Kopyala */}
+                <div className="flex md:hidden items-center justify-between gap-2 px-1">
+                    <button
+                    onClick={onLeave}
+                    className="w-12 h-12 flex-shrink-0 flex items-center justify-center rounded-xl bg-red-500/10 text-red-500 border border-red-500/20 active:scale-95 transition-all shadow-lg shadow-red-900/10"
+                    title="Odadan Çık"
+                    >
+                    <LogOut size={20} />
+                    </button>
 
-                 <div className="flex-1 h-12 flex items-center justify-center bg-slate-950 border-2 border-dashed border-slate-700 rounded-xl overflow-hidden">
-                    <span className="text-3xl font-black tracking-widest font-mono text-white pt-1">{room.code}</span>
-                 </div>
+                    <div className="flex-1 h-12 flex items-center justify-center bg-slate-950 border-2 border-dashed border-slate-700 rounded-xl overflow-hidden">
+                        <span className="text-3xl font-black tracking-widest font-mono text-white pt-1">{room.code}</span>
+                    </div>
 
-                 <button
-                   onClick={copyCode}
-                   className={`
-                     w-12 h-12 flex-shrink-0 flex items-center justify-center rounded-xl border active:scale-95 transition-all
-                     ${copied 
-                       ? 'bg-green-500/10 border-green-500 text-green-500' 
-                       : 'bg-brand-600 text-white border-brand-500 shadow-lg shadow-brand-500/20'
-                     }
-                   `}
-                   title="Kodu Kopyala"
-                 >
-                   {copied ? <Check size={20} /> : <Copy size={20} />}
-                 </button>
-              </div>
+                    <button
+                    onClick={copyCode}
+                    className={`
+                        w-12 h-12 flex-shrink-0 flex items-center justify-center rounded-xl border active:scale-95 transition-all
+                        ${copied 
+                        ? 'bg-green-500/10 border-green-500 text-green-500' 
+                        : 'bg-brand-600 text-white border-brand-500 shadow-lg shadow-brand-500/20'
+                        }
+                    `}
+                    title="Kodu Kopyala"
+                    >
+                    {copied ? <Check size={20} /> : <Copy size={20} />}
+                    </button>
+                </div>
 
-              {/* MASAÜSTÜ GÖRÜNÜM: Klasik Büyük Kutu */}
-              <div 
-                onClick={copyCode}
-                className={`
-                  hidden md:flex mx-auto w-full max-w-[240px] border-2 border-dashed rounded-xl py-4 items-center justify-center gap-3 cursor-pointer transition-all duration-300
-                  ${copied 
-                    ? 'bg-green-500/10 border-green-500 text-green-400' 
-                    : 'bg-slate-950 border-slate-700 hover:border-brand-500 hover:bg-slate-900 text-white'
-                  }
-                `}
-              >
-                <span className="text-4xl font-black tracking-widest font-mono">{room.code}</span>
-                {copied ? <Check size={20} /> : <Copy size={20} className="text-slate-500" />}
-              </div>
+                {/* MASAÜSTÜ GÖRÜNÜM: Klasik Büyük Kutu */}
+                <div 
+                    onClick={copyCode}
+                    className={`
+                    hidden md:flex mx-auto w-full max-w-[240px] border-2 border-dashed rounded-xl py-4 items-center justify-center gap-3 cursor-pointer transition-all duration-300
+                    ${copied 
+                        ? 'bg-green-500/10 border-green-500 text-green-400' 
+                        : 'bg-slate-950 border-slate-700 hover:border-brand-500 hover:bg-slate-900 text-white'
+                    }
+                    `}
+                >
+                    <span className="text-4xl font-black tracking-widest font-mono">{room.code}</span>
+                    {copied ? <Check size={20} /> : <Copy size={20} className="text-slate-500" />}
+                </div>
 
-              <p className="text-[10px] md:text-xs text-slate-500">
-                {copied ? 'Kod panoya kopyalandı.' : 'Arkadaşlarınla paylaşmak için koda tıkla.'}
-              </p>
-            </div>
-          </Card>
+                <p className="text-[10px] md:text-xs text-slate-500">
+                    {copied ? 'Kod panoya kopyalandı.' : 'Arkadaşlarınla paylaşmak için koda tıkla.'}
+                </p>
+                </div>
+            </Card>
+          ) : (
+            <Card className="bg-slate-900/50 border-slate-700/50 shadow-xl overflow-hidden relative">
+                <div className="text-center py-6">
+                   <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-slate-800 mb-3">
+                      <Users className="text-brand-400" size={24} />
+                   </div>
+                   <h3 className="text-white font-bold text-lg">Hazır Bekle</h3>
+                   <p className="text-slate-500 text-sm mt-1 px-4">Yönetici oyunu başlattığında ekranın otomatik değişecek.</p>
+                </div>
+            </Card>
+          )}
 
+          {/* OYUN AYARLARI KARTI */}
           <Card className="bg-slate-800/40 border-slate-700/50">
             <div className="flex items-center gap-2 mb-4 md:mb-6 text-white border-b border-white/5 pb-3 md:pb-4">
               <Settings className="text-brand-400" size={18} />

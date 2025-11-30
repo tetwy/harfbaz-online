@@ -16,13 +16,18 @@ const App: React.FC = () => {
   const [roundAnswers, setRoundAnswers] = useState<RoundAnswers>({});
   const [currentVotes, setCurrentVotes] = useState<Vote[]>([]);
   
+  // KİLİT MEKANİZMASI
   const [loading, setLoading] = useState(false);
   
   const isLeavingRef = useRef(false);
 
-  // YENİ EKLENEN KISIM: Sunucudan güncelleme gelince butonu tekrar aktif et
+  // KRİTİK DÜZELTME: Buton kilidini SADECE sunucudan yeni veri geldiğinde aç
+  // Böylece işlem bitmeden buton asla tekrar aktif olmaz.
   useEffect(() => {
-    setLoading(false);
+    if (loading) {
+        // Eğer sunucudan yeni bir kategori indexi veya yeni tur bilgisi geldiyse kilidi aç
+        setLoading(false);
+    }
   }, [room?.votingCategoryIndex, room?.currentRound, status]);
 
   useEffect(() => {
@@ -169,17 +174,18 @@ const App: React.FC = () => {
     }
   };
 
-  // GÜNCELLENMİŞ handleNextCategory (Emniyet Kilitli)
+  // --- KRİTİK GÜNCELLEME BURADA ---
   const handleNextCategory = async () => {
     if (!room || !activeRoomId || !me?.isHost) return;
-    if (loading) return; 
+    if (loading) return; // Zaten işlem yapılıyorsa durdur
 
-    setLoading(true); 
+    setLoading(true); // Kilitle
     
-    // EMNİYET SÜBAPI: 10 saniye içinde yanıt gelmezse butonu zorla aç
-    const safetyTimer = setTimeout(() => {
+    // Emniyet sübapı: Eğer 5 saniye içinde sunucudan yanıt gelmezse kilidi zorla aç
+    // (İnternet kopması vs. durumunda oyun donmasın diye)
+    setTimeout(() => {
         setLoading(false);
-    }, 10000);
+    }, 5000);
 
     try {
         const currentIndex = room.votingCategoryIndex || 0;
@@ -188,6 +194,7 @@ const App: React.FC = () => {
         if (currentIndex < currentCategories.length - 1) {
           await gameService.updateVotingIndex(activeRoomId, currentIndex + 1);
         } else {
+          // Puanları hesapla
           await gameService.calculateScores(activeRoomId, room.currentRound, room.players);
           
           if (room.currentRound < room.settings.totalRounds) {
@@ -196,12 +203,13 @@ const App: React.FC = () => {
               await gameService.updateStatus(activeRoomId, GameStatus.GAME_OVER);
           }
         }
-        // İşlem başarılı olursa timer'ı iptal etmemize gerek yok, 
-        // çünkü useEffect zaten ekran değişince loading'i false yapacak.
+        
+        // DİKKAT: Burada setLoading(false) ÇAĞIRMIYORUZ!
+        // Kilidi yukarıdaki useEffect açacak.
+        
     } catch (e) {
         console.error("Kategori geçiş hatası:", e);
-        setLoading(false); // Hata durumunda hemen aç
-        clearTimeout(safetyTimer);
+        setLoading(false); // Sadece hata olursa hemen aç
     }
   };
 
@@ -209,7 +217,43 @@ const App: React.FC = () => {
     if (!room || !me || !activeRoomId) return;
     const currentCategories = room.settings.categories || CATEGORIES;
     const currentCategory = currentCategories[room.votingCategoryIndex || 0];
-    await gameService.toggleVote(activeRoomId, room.currentRound, me.id, targetPlayerId, currentCategory);
+
+    // --- OPTIMISTIK GÜNCELLEME (HIZLI TEPKİ) ---
+    // 1. Mevcut listede benim oyum var mı kontrol et
+    const isAlreadyVoted = currentVotes.some(v => 
+        v.voterId === me.id && 
+        v.targetPlayerId === targetPlayerId && 
+        v.category === currentCategory
+    );
+
+    // 2. State'i HEMEN güncelle (Sunucuyu beklemeden)
+    let optimisticVotes;
+    if (isAlreadyVoted) {
+        // Varsa listeden çıkar (Geri alıyormuş gibi göster)
+        optimisticVotes = currentVotes.filter(v => 
+            !(v.voterId === me.id && v.targetPlayerId === targetPlayerId && v.category === currentCategory)
+        );
+    } else {
+        // Yoksa listeye ekle (Oy vermiş gibi göster)
+        const newVote: Vote = {
+            voterId: me.id,
+            targetPlayerId: targetPlayerId,
+            category: currentCategory,
+            isVeto: true
+        };
+        optimisticVotes = [...currentVotes, newVote];
+    }
+    
+    // Anında ekrana yansıt
+    setCurrentVotes(optimisticVotes);
+
+    // 3. Sunucuya isteği gönder (Arka planda işlesin)
+    try {
+        await gameService.toggleVote(activeRoomId, room.currentRound, me.id, targetPlayerId, currentCategory);
+    } catch (e) {
+        console.error("Oy verme hatası:", e);
+        // Hata durumunda subscription zaten doğru veriyi getireceği için ekstra bir şey yapmaya gerek yok.
+    }
   };
 
   const handleRevealCard = async (playerId: string) => {
@@ -243,7 +287,7 @@ const App: React.FC = () => {
             isHiddenMode={room.settings.isHiddenMode || false}
             revealedPlayers={room.revealedPlayers || []}
             onRevealCard={handleRevealCard}
-            isLoading={loading} 
+            isLoading={loading} // Kilit durumunu arayüze gönder
         />
       ) : null;
       case GameStatus.SCORING:
