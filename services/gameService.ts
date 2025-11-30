@@ -45,11 +45,15 @@ export const gameService = {
   createRoom: async (hostName: string, avatar: string, settings: RoomSettings) => {
     const userId = await ensureAuth();
 
+    // DÜZELTME: Eğer kullanıcı zaten bir odada görünüyorsa, önce o kaydı temizle.
+    // Bu işlem 409 Conflict hatasını önler.
+    await gameService.leaveRoom(userId);
+
     const roomCode = Math.random().toString(36).substring(2, 6).toUpperCase();
     const initialSettings = { 
       ...settings, 
       isHiddenMode: settings.isHiddenMode || false,
-      categories: CATEGORIES // Shuffle kaldırıldı, sabit sıra
+      categories: CATEGORIES 
     };
 
     const { data: roomData, error: roomError } = await supabase
@@ -95,6 +99,9 @@ export const gameService = {
 
   joinRoom: async (roomCode: string, playerName: string, avatar: string) => {
     const userId = await ensureAuth();
+
+    // DÜZELTME: Eski odayı/kaydı temizle
+    await gameService.leaveRoom(userId);
 
     const { data: roomData, error: roomFetchError } = await supabase.from('rooms').select('*').eq('code', roomCode).single();
     if (roomFetchError || !roomData) throw new Error("Oda bulunamadı!");
@@ -261,7 +268,7 @@ export const gameService = {
     const { data: currentRoom } = await supabase.from('rooms').select('settings').eq('id', roomId).single();
     const newSettings = {
       ...(currentRoom?.settings || {}),
-      categories: CATEGORIES // Shuffle kaldırıldı
+      categories: CATEGORIES 
     };
 
     await supabase.from('answers').delete().eq('room_id', roomId);
@@ -310,7 +317,6 @@ export const gameService = {
   },
 
   toggleVote: async (roomId: string, roundNumber: number, voterId: string, targetPlayerId: string, category: string) => {
-    // 406 Hatası Fix: .maybeSingle()
     const { data: existingVote } = await supabase
       .from('votes')
       .select('id')
