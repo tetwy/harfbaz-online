@@ -169,12 +169,18 @@ const App: React.FC = () => {
     }
   };
 
-  // DÜZELTİLEN KISIM: finally bloğu kaldırıldı
+  // GÜNCELLENMİŞ handleNextCategory (Emniyet Kilitli)
   const handleNextCategory = async () => {
     if (!room || !activeRoomId || !me?.isHost) return;
     if (loading) return; 
 
     setLoading(true); 
+    
+    // EMNİYET SÜBAPI: 10 saniye içinde yanıt gelmezse butonu zorla aç
+    const safetyTimer = setTimeout(() => {
+        setLoading(false);
+    }, 10000);
+
     try {
         const currentIndex = room.votingCategoryIndex || 0;
         const currentCategories = room.settings.categories || CATEGORIES;
@@ -190,9 +196,12 @@ const App: React.FC = () => {
               await gameService.updateStatus(activeRoomId, GameStatus.GAME_OVER);
           }
         }
+        // İşlem başarılı olursa timer'ı iptal etmemize gerek yok, 
+        // çünkü useEffect zaten ekran değişince loading'i false yapacak.
     } catch (e) {
         console.error("Kategori geçiş hatası:", e);
-        setLoading(false); // Sadece hatada kilidi aç
+        setLoading(false); // Hata durumunda hemen aç
+        clearTimeout(safetyTimer);
     }
   };
 
