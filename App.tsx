@@ -16,24 +16,34 @@ const App: React.FC = () => {
   const [roundAnswers, setRoundAnswers] = useState<RoundAnswers>({});
   const [currentVotes, setCurrentVotes] = useState<Vote[]>([]);
   
-  // KİLİT MEKANİZMASI
   const [loading, setLoading] = useState(false);
-  
+  const processingRef = useRef(false);
   const isLeavingRef = useRef(false);
 
-  // KRİTİK DÜZELTME: Buton kilidini SADECE sunucudan yeni veri geldiğinde aç
-  // Böylece işlem bitmeden buton asla tekrar aktif olmaz.
+  // --- YENİ: Verileri referanslarda tut (Bağlantı kopmadan erişebilmek için) ---
+  const meRef = useRef(me);
+  const roomRef = useRef(room);
+  const statusRef = useRef(status);
+
+  // Her render'da ref'leri güncelle
   useEffect(() => {
-    if (loading) {
-        // Eğer sunucudan yeni bir kategori indexi veya yeni tur bilgisi geldiyse kilidi aç
+    meRef.current = me;
+    roomRef.current = room;
+    statusRef.current = status;
+  }, [me, room, status]);
+
+  // --- KİLİT AÇMA ---
+  useEffect(() => {
+    if (loading || processingRef.current) {
         setLoading(false);
+        processingRef.current = false;
     }
   }, [room?.votingCategoryIndex, room?.currentRound, status]);
 
+  // --- SAYFA YENİLEME ENGELİ ---
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (isLeavingRef.current) return;
-
       if (status === GameStatus.PLAYING || status === GameStatus.VOTING) {
         e.preventDefault();
         e.returnValue = ''; 
@@ -43,6 +53,7 @@ const App: React.FC = () => {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [status]);
 
+  // --- OTURUM KURTARMA ---
   useEffect(() => {
     const session = localStorage.getItem('harfbaz_session');
     if (session && !activeRoomId) {
@@ -62,6 +73,9 @@ const App: React.FC = () => {
     }
   }, []); 
 
+  // --- ANA SUBSCRIPTION (BAĞLANTI) ---
+  // KRİTİK DÜZELTME: Dependency array sadece [activeRoomId] oldu.
+  // Artık puan değişince veya status değişince bağlantı KOPMAYACAK.
   useEffect(() => {
     if (!activeRoomId) return;
 
@@ -69,12 +83,14 @@ const App: React.FC = () => {
       const freshPlayers = await gameService.getPlayers(activeRoomId);
       setRoom((prev: any) => prev ? { ...prev, players: freshPlayers } : null);
       
-      if (me) {
-        const myFreshData = freshPlayers.find(p => p.id === me.id);
+      // Ref üzerinden güncel "me" verisine eriş
+      const currentMe = meRef.current;
+      if (currentMe) {
+        const myFreshData = freshPlayers.find(p => p.id === currentMe.id);
         if (!myFreshData) {
            window.location.reload();
         } else {
-           if (myFreshData.isHost !== me.isHost || myFreshData.score !== me.score) {
+           if (myFreshData.isHost !== currentMe.isHost || myFreshData.score !== currentMe.score) {
               setMe(myFreshData);
            }
         }
@@ -86,8 +102,10 @@ const App: React.FC = () => {
        setCurrentVotes(votes);
     };
 
+    // İlk açılışta verileri çek
     refreshPlayers();
 
+    // Sadece oda ID'si değişirse abone ol/çık
     const unsubscribe = gameService.subscribeToRoom(activeRoomId, async (update) => {
       if (update.type === 'ROOM_UPDATE') {
         const newRoomData = update.data;
@@ -95,7 +113,8 @@ const App: React.FC = () => {
         let uiStatus = dbStatus as GameStatus;
         if (dbStatus === 'LOBBY' && activeRoomId) uiStatus = GameStatus.WAITING;
 
-        if (uiStatus !== status) {
+        // Ref üzerinden güncel status'e eriş
+        if (uiStatus !== statusRef.current) {
            setStatus(uiStatus);
            if (uiStatus === GameStatus.VOTING) {
              const answers = await gameService.getRoundAnswers(activeRoomId, newRoomData.current_round);
@@ -113,11 +132,21 @@ const App: React.FC = () => {
           roundStartTime: newRoomData.round_start_time
         } : null);
       }
-      if (update.type === 'PLAYER_UPDATE') refreshPlayers();
-      if (update.type === 'VOTES_UPDATE' && room) refreshVotes(room.currentRound);
+      
+      if (update.type === 'PLAYER_UPDATE') {
+          // Oyuncu güncellemesi geldiğinde listeyi yenile
+          refreshPlayers();
+      }
+      
+      if (update.type === 'VOTES_UPDATE') {
+          // Ref üzerinden güncel oda verisine eriş
+          const currentRoom = roomRef.current;
+          if (currentRoom) refreshVotes(currentRoom.currentRound);
+      }
     });
+    
     return () => { unsubscribe(); };
-  }, [activeRoomId, status, room?.currentRound, me]);
+  }, [activeRoomId]); // <-- DİKKAT: Burası artık tertemiz, sadece ID'ye bağlı.
 
   const handleJoinRoom = (roomData: Room, playerData: Player) => {
     setRoom(roomData);
@@ -128,9 +157,7 @@ const App: React.FC = () => {
   };
 
   const handleLeaveRoom = async () => {
-    if (!window.confirm("Oyundan ayrılmak istediğine emin misin?")) {
-        return; 
-    }
+    if (!window.confirm("Oyundan ayrılmak istediğine emin misin?")) return;
     isLeavingRef.current = true;
     localStorage.removeItem('harfbaz_session');
     if (me?.id) await gameService.leaveRoom(me.id);
@@ -174,17 +201,16 @@ const App: React.FC = () => {
     }
   };
 
-  // --- KRİTİK GÜNCELLEME BURADA ---
   const handleNextCategory = async () => {
     if (!room || !activeRoomId || !me?.isHost) return;
-    if (loading) return; // Zaten işlem yapılıyorsa durdur
+    if (processingRef.current) return;
 
-    setLoading(true); // Kilitle
+    processingRef.current = true;
+    setLoading(true); 
     
-    // Emniyet sübapı: Eğer 5 saniye içinde sunucudan yanıt gelmezse kilidi zorla aç
-    // (İnternet kopması vs. durumunda oyun donmasın diye)
-    setTimeout(() => {
+    const safetyTimer = setTimeout(() => {
         setLoading(false);
+        processingRef.current = false;
     }, 5000);
 
     try {
@@ -194,7 +220,6 @@ const App: React.FC = () => {
         if (currentIndex < currentCategories.length - 1) {
           await gameService.updateVotingIndex(activeRoomId, currentIndex + 1);
         } else {
-          // Puanları hesapla
           await gameService.calculateScores(activeRoomId, room.currentRound, room.players);
           
           if (room.currentRound < room.settings.totalRounds) {
@@ -203,13 +228,11 @@ const App: React.FC = () => {
               await gameService.updateStatus(activeRoomId, GameStatus.GAME_OVER);
           }
         }
-        
-        // DİKKAT: Burada setLoading(false) ÇAĞIRMIYORUZ!
-        // Kilidi yukarıdaki useEffect açacak.
-        
     } catch (e) {
         console.error("Kategori geçiş hatası:", e);
-        setLoading(false); // Sadece hata olursa hemen aç
+        setLoading(false);
+        processingRef.current = false;
+        clearTimeout(safetyTimer);
     }
   };
 
@@ -218,23 +241,18 @@ const App: React.FC = () => {
     const currentCategories = room.settings.categories || CATEGORIES;
     const currentCategory = currentCategories[room.votingCategoryIndex || 0];
 
-    // --- OPTIMISTIK GÜNCELLEME (HIZLI TEPKİ) ---
-    // 1. Mevcut listede benim oyum var mı kontrol et
     const isAlreadyVoted = currentVotes.some(v => 
         v.voterId === me.id && 
         v.targetPlayerId === targetPlayerId && 
         v.category === currentCategory
     );
 
-    // 2. State'i HEMEN güncelle (Sunucuyu beklemeden)
     let optimisticVotes;
     if (isAlreadyVoted) {
-        // Varsa listeden çıkar (Geri alıyormuş gibi göster)
         optimisticVotes = currentVotes.filter(v => 
             !(v.voterId === me.id && v.targetPlayerId === targetPlayerId && v.category === currentCategory)
         );
     } else {
-        // Yoksa listeye ekle (Oy vermiş gibi göster)
         const newVote: Vote = {
             voterId: me.id,
             targetPlayerId: targetPlayerId,
@@ -244,15 +262,12 @@ const App: React.FC = () => {
         optimisticVotes = [...currentVotes, newVote];
     }
     
-    // Anında ekrana yansıt
     setCurrentVotes(optimisticVotes);
 
-    // 3. Sunucuya isteği gönder (Arka planda işlesin)
     try {
         await gameService.toggleVote(activeRoomId, room.currentRound, me.id, targetPlayerId, currentCategory);
     } catch (e) {
         console.error("Oy verme hatası:", e);
-        // Hata durumunda subscription zaten doğru veriyi getireceği için ekstra bir şey yapmaya gerek yok.
     }
   };
 
@@ -287,7 +302,7 @@ const App: React.FC = () => {
             isHiddenMode={room.settings.isHiddenMode || false}
             revealedPlayers={room.revealedPlayers || []}
             onRevealCard={handleRevealCard}
-            isLoading={loading} // Kilit durumunu arayüze gönder
+            isLoading={loading} 
         />
       ) : null;
       case GameStatus.SCORING:
