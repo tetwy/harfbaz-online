@@ -28,18 +28,7 @@ const getUniqueRandomLetter = (usedLetters: string[]): string => {
   return availableLetters[randomIndex];
 };
 
-// YARDIMCI: Fisher-Yates Shuffle
-const shuffleArray = (array: string[]) => {
-  const newArr = [...array];
-  for (let i = newArr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [newArr[i], newArr[j]] = [newArr[j], newArr[i]];
-  }
-  return newArr;
-};
-
 // YARDIMCI: Anonim Auth Kontrolü
-// Kullanıcının sessizce sisteme girmesini ve bir User ID almasını sağlar.
 const ensureAuth = async () => {
   const { data: { session } } = await supabase.auth.getSession();
   if (session) return session.user.id;
@@ -54,14 +43,13 @@ const ensureAuth = async () => {
 export const gameService = {
   // --- ODA YÖNETİMİ ---
   createRoom: async (hostName: string, avatar: string, settings: RoomSettings) => {
-    // 1. Önce kullanıcının giriş yapmasını sağla ve ID'sini al
     const userId = await ensureAuth();
 
     const roomCode = Math.random().toString(36).substring(2, 6).toUpperCase();
     const initialSettings = { 
       ...settings, 
       isHiddenMode: settings.isHiddenMode || false,
-      categories: shuffleArray(CATEGORIES)
+      categories: CATEGORIES // Shuffle kaldırıldı, sabit sıra
     };
 
     const { data: roomData, error: roomError } = await supabase
@@ -78,12 +66,10 @@ export const gameService = {
 
     if (roomError) throw roomError;
 
-    // 2. Oyuncuyu eklerken ID'yi ELLE (userId olarak) veriyoruz.
-    // Böylece players tablosundaki "id" sütunu ile auth.uid() eşleşmiş oluyor.
     const { data: playerData, error: playerError } = await supabase
       .from('players')
       .insert({ 
-        id: userId, // Auth ID'sini kullan
+        id: userId, 
         room_id: roomData.id, 
         name: hostName, 
         avatar, 
@@ -108,17 +94,15 @@ export const gameService = {
   },
 
   joinRoom: async (roomCode: string, playerName: string, avatar: string) => {
-    // 1. Giriş yap ve ID al
     const userId = await ensureAuth();
 
     const { data: roomData, error: roomFetchError } = await supabase.from('rooms').select('*').eq('code', roomCode).single();
     if (roomFetchError || !roomData) throw new Error("Oda bulunamadı!");
 
-    // 2. Oyuncuyu kendi Auth ID'si ile ekle
     const { data: playerData, error: playerError } = await supabase
       .from('players')
       .insert({ 
-        id: userId, // Auth ID'sini kullan
+        id: userId, 
         room_id: roomData.id, 
         name: playerName, 
         avatar, 
@@ -145,14 +129,8 @@ export const gameService = {
   },
 
   reconnect: async (roomId: string, playerId: string) => {
-    // Reconnect durumunda da oturumu kontrol etmek iyi bir pratiktir
     const userId = await ensureAuth();
-    if (userId !== playerId) {
-      // Eğer localStorage'daki ID ile Auth ID uyuşmazsa (nadir durum),
-      // burada bir mantık kurulabilir ama şimdilik devam ediyoruz.
-      // console.warn("Auth ID mismatch"); 
-    }
-
+    
     const { data: roomData } = await supabase.from('rooms').select('*').eq('id', roomId).single();
     if (!roomData) return null;
     const { data: playerData } = await supabase.from('players').select('*').eq('id', playerId).single();
@@ -172,7 +150,6 @@ export const gameService = {
     return { room: mappedRoom, player: mapDbPlayer(playerData) };
   },
 
-  // --- GÜVENLİ LEAVE & HOST TRANSFERİ ---
   leaveRoom: async (playerId: string) => {
     try {
       const { data: leavingPlayer } = await supabase
@@ -213,7 +190,6 @@ export const gameService = {
     return (data || []).map(mapDbPlayer);
   },
 
-  // --- OYUN AKIŞI ---
   startGame: async (roomId: string) => {
     const letter = getUniqueRandomLetter([]); 
     const now = new Date().toISOString(); 
@@ -285,7 +261,7 @@ export const gameService = {
     const { data: currentRoom } = await supabase.from('rooms').select('settings').eq('id', roomId).single();
     const newSettings = {
       ...(currentRoom?.settings || {}),
-      categories: shuffleArray(CATEGORIES)
+      categories: CATEGORIES // Shuffle kaldırıldı
     };
 
     await supabase.from('answers').delete().eq('room_id', roomId);
@@ -304,13 +280,10 @@ export const gameService = {
     }).eq('id', roomId);
   },
 
-  // --- CEVAP VE SKOR ---
   submitAnswers: async (roomId: string, playerId: string, roundNumber: number, answers: Record<string, string>) => {
-    // Önceki cevabı temizle
     const { error: deleteError } = await supabase.from('answers').delete().match({ room_id: roomId, player_id: playerId, round_number: roundNumber });
     if (deleteError) console.warn("Silme hatası:", deleteError);
     
-    // Insert işleminin sonucunu kontrol et
     const { error: insertError } = await supabase.from('answers').insert({ 
       room_id: roomId, 
       player_id: playerId, 
@@ -337,7 +310,13 @@ export const gameService = {
   },
 
   toggleVote: async (roomId: string, roundNumber: number, voterId: string, targetPlayerId: string, category: string) => {
-    const { data: existingVote } = await supabase.from('votes').select('id').match({ room_id: roomId, round_number: roundNumber, voter_id: voterId, target_player_id: targetPlayerId, category: category }).single();
+    // 406 Hatası Fix: .maybeSingle()
+    const { data: existingVote } = await supabase
+      .from('votes')
+      .select('id')
+      .match({ room_id: roomId, round_number: roundNumber, voter_id: voterId, target_player_id: targetPlayerId, category: category })
+      .maybeSingle();
+
     if (existingVote) {
       await supabase.from('votes').delete().eq('id', existingVote.id);
     } else {
@@ -356,6 +335,7 @@ export const gameService = {
     const { data: roomData } = await supabase.from('rooms').select('current_letter').eq('id', roomId).single();
     const targetLetter = (roomData?.current_letter || '').toLocaleLowerCase('tr-TR');
     
+    // Kelime havuzunu oluştur
     const categoryWordPool: Record<string, string[]> = {};
     CATEGORIES.forEach(cat => {
       categoryWordPool[cat] = [];
@@ -365,7 +345,8 @@ export const gameService = {
       });
     });
 
-    for (const player of players) {
+    // PARALEL İŞLEM: Promise.all ile tüm güncellemeleri aynı anda gönder
+    const updatePromises = players.map(async (player) => {
       const playerAnswersRow = answersData?.find((a: any) => a.player_id === player.id);
       const playerAnswers = playerAnswersRow ? playerAnswersRow.answers_json : {};
       let roundScore = 0;
@@ -385,8 +366,10 @@ export const gameService = {
         if (duplicateCount > 1) { roundScore += 5; } else { roundScore += 10; }
       });
 
-      await supabase.from('players').update({ score: player.score + roundScore }).eq('id', player.id);
-    }
+      return supabase.from('players').update({ score: player.score + roundScore }).eq('id', player.id);
+    });
+
+    await Promise.all(updatePromises);
   },
 
   submitVotes: async (roomId: string, roundNumber: number, votes: Vote[]) => {},

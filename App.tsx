@@ -14,7 +14,10 @@ const App: React.FC = () => {
   const [me, setMe] = useState<Player | null>(null);
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
   const [roundAnswers, setRoundAnswers] = useState<RoundAnswers>({});
-  const [currentVotes, setCurrentVotes] = useState<Vote[]>([]); 
+  const [currentVotes, setCurrentVotes] = useState<Vote[]>([]);
+  
+  // YENİ: Yükleniyor kilidi (Çift tıklamayı önler)
+  const [loading, setLoading] = useState(false);
   
   const isLeavingRef = useRef(false);
 
@@ -99,7 +102,7 @@ const App: React.FC = () => {
           currentRound: newRoomData.current_round, settings: newRoomData.settings,
           votingCategoryIndex: newRoomData.voting_category_index,
           revealedPlayers: newRoomData.revealed_players,
-          roundStartTime: newRoomData.round_start_time // YENİ EŞLEME
+          roundStartTime: newRoomData.round_start_time
         } : null);
       }
       if (update.type === 'PLAYER_UPDATE') refreshPlayers();
@@ -151,39 +154,48 @@ const App: React.FC = () => {
             room.players.length
          );
 
-         // B) Süre doldu mu kontrolü (Güvenlik Sigortası)
-         // roundStartTime veritabanından gelir. 
-         // Eğer yoksa (hata durumu) hemen geçmemesi için now kullanırız ama normalde vardır.
+         // B) Süre doldu mu kontrolü
          const startTime = room.roundStartTime ? new Date(room.roundStartTime).getTime() : Date.now();
          const durationMs = room.settings.roundDuration * 1000;
-         const bufferMs = 3000; // 3 saniye tolerans (internet gecikmesi için)
+         const bufferMs = 3000;
          const now = Date.now();
          
          const isTimeExpired = now > (startTime + durationMs + bufferMs);
 
-         // Eğer herkes gönderdiyse VEYA süre (toleransla birlikte) dolduysa
          if (allSubmitted || isTimeExpired) {
             clearInterval(checkInterval);
             await gameService.updateStatus(activeRoomId, GameStatus.VOTING);
          }
-      }, 1000); // Her saniye kontrol et
+      }, 1000);
     }
   };
 
+  // GÜNCELLENDİ: Loading kontrolü eklendi
   const handleNextCategory = async () => {
     if (!room || !activeRoomId || !me?.isHost) return;
-    const currentIndex = room.votingCategoryIndex || 0;
-    const currentCategories = room.settings.categories || CATEGORIES;
+    if (loading) return; // Zaten işlem yapılıyorsa dur
 
-    if (currentIndex < currentCategories.length - 1) {
-      await gameService.updateVotingIndex(activeRoomId, currentIndex + 1);
-    } else {
-      await gameService.calculateScores(activeRoomId, room.currentRound, room.players);
-      if (room.currentRound < room.settings.totalRounds) {
-          await gameService.nextRound(activeRoomId, room.currentRound, room.settings.totalRounds);
-      } else {
-          await gameService.updateStatus(activeRoomId, GameStatus.GAME_OVER);
-      }
+    setLoading(true); // Kilitle
+    try {
+        const currentIndex = room.votingCategoryIndex || 0;
+        const currentCategories = room.settings.categories || CATEGORIES;
+
+        if (currentIndex < currentCategories.length - 1) {
+          await gameService.updateVotingIndex(activeRoomId, currentIndex + 1);
+        } else {
+          // Paralel puan hesaplama
+          await gameService.calculateScores(activeRoomId, room.currentRound, room.players);
+          
+          if (room.currentRound < room.settings.totalRounds) {
+              await gameService.nextRound(activeRoomId, room.currentRound, room.settings.totalRounds);
+          } else {
+              await gameService.updateStatus(activeRoomId, GameStatus.GAME_OVER);
+          }
+        }
+    } catch (e) {
+        console.error("Kategori geçiş hatası:", e);
+    } finally {
+        setLoading(false); // Kilidi aç
     }
   };
 
@@ -225,6 +237,7 @@ const App: React.FC = () => {
             isHiddenMode={room.settings.isHiddenMode || false}
             revealedPlayers={room.revealedPlayers || []}
             onRevealCard={handleRevealCard}
+            isLoading={loading} // YENİ: Prop olarak geçirildi
         />
       ) : null;
       case GameStatus.SCORING:

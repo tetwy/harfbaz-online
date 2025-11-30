@@ -1,5 +1,5 @@
 import React from 'react';
-import { ThumbsDown, AlertCircle, ArrowRight, LogOut, Eye, EyeOff } from 'lucide-react'; 
+import { ThumbsDown, AlertCircle, ArrowRight, LogOut, Eye, EyeOff, Loader2 } from 'lucide-react'; 
 import { Button, Badge } from './UI';
 import { CATEGORIES } from '../constants';
 import { Player, RoundAnswers, Vote } from '../types';
@@ -18,16 +18,20 @@ interface VotingPhaseProps {
   initialBotVotes: Vote[];
   onLeave: () => void;
   
-  // YENİ PROPLAR
+  // Mevcut Proplar
   isHiddenMode: boolean;
   revealedPlayers: string[];
   onRevealCard: (playerId: string) => void;
+  
+  // YENİ PROP: Yükleniyor Durumu
+  isLoading?: boolean;
 }
 
 const VotingPhase: React.FC<VotingPhaseProps> = ({ 
   players, answers, currentLetter, currentPlayerId,
   currentVotes, currentCategoryIndex, isHost, onNextCategory, onToggleVote, onLeave,
-  isHiddenMode, revealedPlayers, onRevealCard
+  isHiddenMode, revealedPlayers, onRevealCard,
+  isLoading = false // Varsayılan değer
 }) => {
   
   const category = CATEGORIES[currentCategoryIndex];
@@ -41,7 +45,7 @@ const VotingPhase: React.FC<VotingPhaseProps> = ({
     const isMe = targetPlayerId === currentPlayerId;
     const isRevealed = revealedPlayers.includes(targetPlayerId);
 
-    // EĞER KART BENİMSE VE GİZLİYSE -> AÇ (Sadece bir kere açılır, geri kapanmaz mantığı kurduk ama istersen toggle yapılır)
+    // EĞER KART BENİMSE VE GİZLİYSE -> AÇ
     if (isMe && isHiddenMode && !isRevealed) {
         onRevealCard(targetPlayerId);
         return;
@@ -88,10 +92,7 @@ const VotingPhase: React.FC<VotingPhaseProps> = ({
           const isMe = player.id === currentPlayerId;
           const isRevealed = revealedPlayers.includes(player.id);
           
-          // GİZLİLİK MANTIĞI:
-          // Eğer mod açıksa VE oyuncu kartını açmamışsa -> GİZLE
           const isHidden = isHiddenMode && !isRevealed;
-
           const invalidStart = !isHidden && answer && !answer.trim().toLocaleUpperCase('tr-TR').startsWith(currentLetter);
 
           const votesForThisCard = currentVotes.filter(v => 
@@ -131,7 +132,6 @@ const VotingPhase: React.FC<VotingPhaseProps> = ({
                   <div className="flex flex-col items-start min-w-0">
                     <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">{player.name}</span>
                     
-                    {/* CEVAP ALANI */}
                     <span className={`text-xl font-medium transition-all truncate w-full 
                         ${isEmpty ? 'text-slate-600 italic' : 'text-white'} 
                         ${isRejected && !isHidden ? 'line-through decoration-2 decoration-red-500 text-red-200/70' : ''}
@@ -144,21 +144,18 @@ const VotingPhase: React.FC<VotingPhaseProps> = ({
 
                 <div className="flex flex-col items-end justify-center gap-2 pl-2">
                    
-                   {/* GİZLİ MOD İKONU (Kendi kartıysa ve gizliyse) */}
                    {isHidden && isMe && (
                        <div className="flex items-center gap-1 text-[10px] text-purple-300 font-bold bg-purple-900/50 px-2 py-1 rounded-full whitespace-nowrap animate-pulse">
                            <Eye size={12} /> DOKUN VE AÇ
                        </div>
                    )}
 
-                   {/* HATALI UYARISI (Sadece açıksa görünür) */}
                    {invalidStart && !isEmpty && !isRejected && (
                      <div className="flex items-center gap-1 text-[10px] text-yellow-500 font-bold bg-yellow-900/30 px-2 py-1 rounded-full whitespace-nowrap">
                         <AlertCircle size={10} /> HATALI
                      </div>
                    )}
 
-                   {/* REDDET BUTONU */}
                    {!isEmpty && !isMe && (
                     <div className={`
                       flex items-center gap-2 px-3 py-1.5 rounded-full transition-all text-xs font-bold whitespace-nowrap
@@ -199,8 +196,16 @@ const VotingPhase: React.FC<VotingPhaseProps> = ({
 
       {isHost && (
         <div className="fixed bottom-6 left-0 right-0 flex justify-center px-4 z-30 pointer-events-none">
-          <Button onClick={onNextCategory} className="w-full max-w-md shadow-2xl pointer-events-auto" icon={<ArrowRight />}>
-            {isLastCategory ? 'Oylamayı Bitir' : 'Sıradaki Kategori'}
+          <Button 
+            onClick={onNextCategory} 
+            disabled={isLoading} // Yükleniyorsa devre dışı
+            className="w-full max-w-md shadow-2xl pointer-events-auto" 
+            icon={isLoading ? <Loader2 className="animate-spin" /> : <ArrowRight />} // İkon değişimi
+          >
+            {isLoading 
+                ? 'Hesaplanıyor...' 
+                : (isLastCategory ? 'Oylamayı Bitir' : 'Sıradaki Kategori')
+            }
           </Button>
         </div>
       )}
