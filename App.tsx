@@ -139,9 +139,38 @@ const App: React.FC = () => {
       }
       
       if (update.type === 'VOTES_UPDATE') {
-          // Ref üzerinden güncel oda verisine eriş
+          // --- ANLIK OYLAMA GÜNCELLEMESİ (REALTIME FIX) ---
+          const { eventType, new: newRecord, old: oldRecord } = update.payload;
+
+          setCurrentVotes(prevVotes => {
+              // Eğer bir oy SİLİNDİYSE (Red geri alındıysa) -> Listeden hemen çıkar
+              if (eventType === 'DELETE' && oldRecord?.id) {
+                  return prevVotes.filter(v => v.id !== oldRecord.id);
+              }
+              // Eğer yeni oy EKLENDİYSE -> Listeye hemen ekle
+              if (eventType === 'INSERT' && newRecord) {
+                  // Mükerrer eklemeyi önle
+                  const exists = prevVotes.some(v => v.id === newRecord.id);
+                  if (exists) return prevVotes;
+
+                  const newVote: Vote = {
+                      id: newRecord.id,
+                      voterId: newRecord.voter_id,
+                      targetPlayerId: newRecord.target_player_id,
+                      category: newRecord.category,
+                      isVeto: newRecord.is_veto
+                  };
+                  return [...prevVotes, newVote];
+              }
+              return prevVotes;
+          });
+
+          // GÜVENLİK AĞI: Yine de tam listeyi arkadan getir (Veri tutarlılığı için)
+          // Bu işlem kullanıcıya hissettirilmeden arka planda doğrulama yapar.
           const currentRoom = roomRef.current;
-          if (currentRoom) refreshVotes(currentRoom.currentRound);
+          if (currentRoom) {
+             refreshVotes(currentRoom.currentRound);
+          }
       }
     });
     
@@ -254,6 +283,7 @@ const App: React.FC = () => {
         );
     } else {
         const newVote: Vote = {
+            id: 'temp-' + Date.now(), // Geçici ID, optimistik güncelleme için
             voterId: me.id,
             targetPlayerId: targetPlayerId,
             category: currentCategory,

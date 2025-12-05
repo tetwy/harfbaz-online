@@ -43,8 +43,9 @@ export interface RoundAnswers {
 }
 
 export interface Vote {
+  id?: string;
   voterId: string;
   targetPlayerId: string;
   category: string;
-  isVeto: boolean; // true = rejected, false = accepted
+  isVeto: boolean;
 }

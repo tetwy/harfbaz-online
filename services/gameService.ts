@@ -330,8 +330,14 @@ export const gameService = {
   },
 
   getVotes: async (roomId: string, roundNumber: number): Promise<Vote[]> => {
-    const { data } = await supabase.from('votes').select('voter_id, target_player_id, category, is_veto').eq('room_id', roomId).eq('round_number', roundNumber);
-    return (data || []).map((v: any) => ({ voterId: v.voter_id, targetPlayerId: v.target_player_id, category: v.category, isVeto: v.is_veto }));
+    const { data } = await supabase.from('votes').select('id, voter_id, target_player_id, category, is_veto').eq('room_id', roomId).eq('round_number', roundNumber);
+    return (data || []).map((v: any) => ({ 
+        id: v.id,
+        voterId: v.voter_id, 
+        targetPlayerId: v.target_player_id, 
+        category: v.category, 
+        isVeto: v.is_veto 
+    }));
   },
 
   calculateScores: async (roomId: string, roundNumber: number, players: Player[]) => {
@@ -380,11 +386,11 @@ export const gameService = {
   submitVotes: async (roomId: string, roundNumber: number, votes: Vote[]) => {},
 
   subscribeToRoom: (roomId: string, onUpdate: (payload: any) => void) => {
-    const channel = supabase.channel(`room:${roomId}`)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` }, (payload) => onUpdate({ type: 'ROOM_UPDATE', data: payload.new }))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'players', filter: `room_id=eq.${roomId}` }, () => onUpdate({ type: 'PLAYER_UPDATE' }))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'votes', filter: `room_id=eq.${roomId}` }, () => onUpdate({ type: 'VOTES_UPDATE' }))
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
+      const channel = supabase.channel(`room:${roomId}`)
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` }, (payload) => onUpdate({ type: 'ROOM_UPDATE', data: payload.new }))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'players', filter: `room_id=eq.${roomId}` }, () => onUpdate({ type: 'PLAYER_UPDATE' }))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'votes', filter: `room_id=eq.${roomId}` }, (payload) => onUpdate({ type: 'VOTES_UPDATE', payload: payload }))
+        .subscribe();
+      return () => { supabase.removeChannel(channel); };
   }
 };
