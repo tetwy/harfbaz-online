@@ -288,19 +288,18 @@ export const gameService = {
   },
 
   submitAnswers: async (roomId: string, playerId: string, roundNumber: number, answers: Record<string, string>) => {
-    const { error: deleteError } = await supabase.from('answers').delete().match({ room_id: roomId, player_id: playerId, round_number: roundNumber });
-    if (deleteError) console.warn("Silme hatası:", deleteError);
-    
-    const { error: insertError } = await supabase.from('answers').insert({ 
+    const { error } = await supabase.from('answers').upsert({ 
       room_id: roomId, 
       player_id: playerId, 
       round_number: roundNumber, 
       answers_json: answers 
+    }, { 
+      onConflict: 'room_id, player_id, round_number'
     });
 
-    if (insertError) {
-      console.error("Cevap gönderme KRİTİK HATA:", insertError);
-      throw insertError; 
+    if (error) {
+      console.error("Cevap gönderme hatası:", error);
+      throw error; 
     }
   },
 
