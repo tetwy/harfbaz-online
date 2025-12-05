@@ -20,7 +20,7 @@ const App: React.FC = () => {
   const processingRef = useRef(false);
   const isLeavingRef = useRef(false);
 
-  // --- YENİ: Verileri referanslarda tut (Bağlantı kopmadan erişebilmek için) ---
+  // --- REFERANSLAR (Bağlantı kopmadan verilere erişim için) ---
   const meRef = useRef(me);
   const roomRef = useRef(room);
   const statusRef = useRef(status);
@@ -32,15 +32,7 @@ const App: React.FC = () => {
     statusRef.current = status;
   }, [me, room, status]);
 
-  // --- KİLİT AÇMA ---
-  useEffect(() => {
-    if (loading || processingRef.current) {
-        setLoading(false);
-        processingRef.current = false;
-    }
-  }, [room?.votingCategoryIndex, room?.currentRound, status]);
-
-  // --- SAYFA YENİLEME ENGELİ ---
+  // --- SAYFA YENİLEME/KAPANMA KORUMASI ---
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (isLeavingRef.current) return;
@@ -53,7 +45,15 @@ const App: React.FC = () => {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [status]);
 
-  // --- OTURUM KURTARMA ---
+  // --- KİLİT MEKANİZMASI (Loading reset) ---
+  useEffect(() => {
+    if (loading || processingRef.current) {
+        setLoading(false);
+        processingRef.current = false;
+    }
+  }, [room?.votingCategoryIndex, room?.currentRound, status]);
+
+  // --- OTURUM KURTARMA (RECONNECT) ---
   useEffect(() => {
     const session = localStorage.getItem('harfbaz_session');
     if (session && !activeRoomId) {
@@ -64,6 +64,7 @@ const App: React.FC = () => {
              setMe(data.player);
              setActiveRoomId(data.room.id);
              let recoveredStatus = data.room.status as GameStatus;
+             // Veritabanı 'LOBBY' ise ama biz oyundaysak WAITING'e çevir
              if (data.room.status === 'LOBBY') recoveredStatus = GameStatus.WAITING;
              setStatus(recoveredStatus);
           } else {
@@ -73,23 +74,22 @@ const App: React.FC = () => {
     }
   }, []); 
 
-  // --- ANA SUBSCRIPTION (BAĞLANTI) ---
-  // KRİTİK DÜZELTME: Dependency array sadece [activeRoomId] oldu.
-  // Artık puan değişince veya status değişince bağlantı KOPMAYACAK.
+  // --- ANA SUBSCRIPTION (REALTIME BAĞLANTI) ---
   useEffect(() => {
     if (!activeRoomId) return;
 
+    // Oyuncu listesini yenile
     const refreshPlayers = async () => {
       const freshPlayers = await gameService.getPlayers(activeRoomId);
       setRoom((prev: any) => prev ? { ...prev, players: freshPlayers } : null);
       
-      // Ref üzerinden güncel "me" verisine eriş
       const currentMe = meRef.current;
       if (currentMe) {
         const myFreshData = freshPlayers.find(p => p.id === currentMe.id);
         if (!myFreshData) {
-           window.location.reload();
+           window.location.reload(); // Odadan atılmışsak
         } else {
+           // Host yetkisi veya puan değişmişse güncelle
            if (myFreshData.isHost !== currentMe.isHost || myFreshData.score !== currentMe.score) {
               setMe(myFreshData);
            }
@@ -97,59 +97,73 @@ const App: React.FC = () => {
       }
     };
 
+    // Oyları yenile
     const refreshVotes = async (round: number) => {
        const votes = await gameService.getVotes(activeRoomId, round);
        setCurrentVotes(votes);
     };
 
-    // İlk açılışta verileri çek
+    // İlk yüklemede verileri çek
     refreshPlayers();
 
-    // Sadece oda ID'si değişirse abone ol/çık
+    // Realtime aboneliği başlat
     const unsubscribe = gameService.subscribeToRoom(activeRoomId, async (update) => {
+      // 1. ODA GÜNCELLEMELERİ (Status, Round, Letter vb.)
       if (update.type === 'ROOM_UPDATE') {
         const newRoomData = update.data;
         let dbStatus = newRoomData.status as string;
         let uiStatus = dbStatus as GameStatus;
         if (dbStatus === 'LOBBY' && activeRoomId) uiStatus = GameStatus.WAITING;
 
-        // Ref üzerinden güncel status'e eriş
+        // Status değiştiyse (örn: PLAYING -> VOTING)
         if (uiStatus !== statusRef.current) {
            setStatus(uiStatus);
+           
+           // Oylamaya geçişte cevapları ve oyları çek
            if (uiStatus === GameStatus.VOTING) {
              const answers = await gameService.getRoundAnswers(activeRoomId, newRoomData.current_round);
              setRoundAnswers(answers);
              refreshVotes(newRoomData.current_round);
            }
-           if (uiStatus === GameStatus.SCORING || uiStatus === GameStatus.GAME_OVER) refreshPlayers();
+           // Oyun bittiğinde veya skorlamada oyuncuları yenile
+           if (uiStatus === GameStatus.SCORING || uiStatus === GameStatus.GAME_OVER) {
+             refreshPlayers();
+           }
         }
 
+        // Oda state'ini güncelle
         setRoom((prev: any) => prev ? { 
-          ...prev, status: newRoomData.status, currentLetter: newRoomData.current_letter,
-          currentRound: newRoomData.current_round, settings: newRoomData.settings,
+          ...prev, 
+          status: newRoomData.status, 
+          currentLetter: newRoomData.current_letter,
+          currentRound: newRoomData.current_round, 
+          settings: newRoomData.settings,
           votingCategoryIndex: newRoomData.voting_category_index,
           revealedPlayers: newRoomData.revealed_players,
           roundStartTime: newRoomData.round_start_time
         } : null);
       }
       
+      // 2. OYUNCU GÜNCELLEMELERİ (Katılma, Puan, Ready)
       if (update.type === 'PLAYER_UPDATE') {
-          // Oyuncu güncellemesi geldiğinde listeyi yenile
           refreshPlayers();
       }
       
+      // 3. OYLAMA GÜNCELLEMELERİ (REALTIME FIX)
       if (update.type === 'VOTES_UPDATE') {
-          // --- ANLIK OYLAMA GÜNCELLEMESİ (REALTIME FIX) ---
+          // Payload içindeki detayları al (gameService güncellemesi şart)
           const { eventType, new: newRecord, old: oldRecord } = update.payload;
 
           setCurrentVotes(prevVotes => {
-              // Eğer bir oy SİLİNDİYSE (Red geri alındıysa) -> Listeden hemen çıkar
+              // SİLME (DELETE): Red geri alındıysa listeden anında çıkar
+              // REPLICA IDENTITY FULL sayesinde oldRecord.id dolu gelir.
               if (eventType === 'DELETE' && oldRecord?.id) {
                   return prevVotes.filter(v => v.id !== oldRecord.id);
               }
-              // Eğer yeni oy EKLENDİYSE -> Listeye hemen ekle
+
+              // EKLEME (INSERT): Yeni oy geldiyse listeye ekle
               if (eventType === 'INSERT' && newRecord) {
-                  // Mükerrer eklemeyi önle
+                  // Zaten varsa ekleme (Optimistic update ile çakışmayı önle)
                   const exists = prevVotes.some(v => v.id === newRecord.id);
                   if (exists) return prevVotes;
 
@@ -165,8 +179,7 @@ const App: React.FC = () => {
               return prevVotes;
           });
 
-          // GÜVENLİK AĞI: Yine de tam listeyi arkadan getir (Veri tutarlılığı için)
-          // Bu işlem kullanıcıya hissettirilmeden arka planda doğrulama yapar.
+          // GÜVENLİK: Her ihtimale karşı veritabanından doğrusunu da çek
           const currentRoom = roomRef.current;
           if (currentRoom) {
              refreshVotes(currentRoom.currentRound);
@@ -175,7 +188,9 @@ const App: React.FC = () => {
     });
     
     return () => { unsubscribe(); };
-  }, [activeRoomId]); // <-- DİKKAT: Burası artık tertemiz, sadece ID'ye bağlı.
+  }, [activeRoomId]); 
+
+  // --- AKSİYONLAR ---
 
   const handleJoinRoom = (roomData: Room, playerData: Player) => {
     setRoom(roomData);
@@ -200,13 +215,18 @@ const App: React.FC = () => {
     }
   };
 
-  const handleStartGame = async () => { if (activeRoomId) await gameService.startGame(activeRoomId); };
+  const handleStartGame = async () => { 
+    if (activeRoomId) await gameService.startGame(activeRoomId); 
+  };
 
+  // Süre bittiğinde veya 'Gönder' denildiğinde
   const handleRoundTimeUp = async (myAnswers: Record<string, string>) => {
     if (!me || !activeRoomId || !room) return;
     
+    // Cevapları gönder (Upsert ile güvenli kayıt)
     await gameService.submitAnswers(activeRoomId, me.id, room.currentRound, myAnswers);
     
+    // Sadece Host, herkesin gönderip göndermediğini kontrol eder
     if (me.isHost) {
       const checkInterval = setInterval(async () => {
          const allSubmitted = await gameService.checkAllAnswersSubmitted(
@@ -215,11 +235,11 @@ const App: React.FC = () => {
             room.players.length
          );
 
+         // Zaman aşımı kontrolü (Ekstra güvenlik)
          const startTime = room.roundStartTime ? new Date(room.roundStartTime).getTime() : Date.now();
          const durationMs = room.settings.roundDuration * 1000;
-         const bufferMs = 3000;
+         const bufferMs = 3000; // 3 saniye tolerans
          const now = Date.now();
-         
          const isTimeExpired = now > (startTime + durationMs + bufferMs);
 
          if (allSubmitted || isTimeExpired) {
@@ -230,6 +250,7 @@ const App: React.FC = () => {
     }
   };
 
+  // Sonraki kategoriye geçiş (Sadece Host)
   const handleNextCategory = async () => {
     if (!room || !activeRoomId || !me?.isHost) return;
     if (processingRef.current) return;
@@ -237,6 +258,7 @@ const App: React.FC = () => {
     processingRef.current = true;
     setLoading(true); 
     
+    // Butona spam yapılmasını önlemek için zamanlayıcı
     const safetyTimer = setTimeout(() => {
         setLoading(false);
         processingRef.current = false;
@@ -246,9 +268,11 @@ const App: React.FC = () => {
         const currentIndex = room.votingCategoryIndex || 0;
         const currentCategories = room.settings.categories || CATEGORIES;
 
+        // Son kategori değilse bir sonrakine geç
         if (currentIndex < currentCategories.length - 1) {
           await gameService.updateVotingIndex(activeRoomId, currentIndex + 1);
         } else {
+          // Son kategoriyse puanları hesapla ve turu bitir
           await gameService.calculateScores(activeRoomId, room.currentRound, room.players);
           
           if (room.currentRound < room.settings.totalRounds) {
@@ -265,25 +289,30 @@ const App: React.FC = () => {
     }
   };
 
+  // Oy Verme / Geri Alma
   const handleToggleVote = async (targetPlayerId: string) => {
     if (!room || !me || !activeRoomId) return;
     const currentCategories = room.settings.categories || CATEGORIES;
     const currentCategory = currentCategories[room.votingCategoryIndex || 0];
 
+    // Mevcut state'te oy var mı?
     const isAlreadyVoted = currentVotes.some(v => 
         v.voterId === me.id && 
         v.targetPlayerId === targetPlayerId && 
         v.category === currentCategory
     );
 
+    // --- OPTIMISTIC UPDATE (Anlık Arayüz Güncellemesi) ---
     let optimisticVotes;
     if (isAlreadyVoted) {
+        // Varsa çıkar
         optimisticVotes = currentVotes.filter(v => 
             !(v.voterId === me.id && v.targetPlayerId === targetPlayerId && v.category === currentCategory)
         );
     } else {
+        // Yoksa ekle (Geçici ID ile)
         const newVote: Vote = {
-            id: 'temp-' + Date.now(), // Geçici ID, optimistik güncelleme için
+            id: 'temp-' + Date.now(), 
             voterId: me.id,
             targetPlayerId: targetPlayerId,
             category: currentCategory,
@@ -294,10 +323,12 @@ const App: React.FC = () => {
     
     setCurrentVotes(optimisticVotes);
 
+    // Sunucuya isteği gönder
     try {
         await gameService.toggleVote(activeRoomId, room.currentRound, me.id, targetPlayerId, currentCategory);
     } catch (e) {
         console.error("Oy verme hatası:", e);
+        // Hata olursa state'i geri alabilirsin (Opsiyonel)
     }
   };
 
@@ -310,13 +341,40 @@ const App: React.FC = () => {
   const handleReset = async () => { if (me?.isHost && activeRoomId) await gameService.resetGame(activeRoomId); };
   const handleNextRound = async () => { if (room && me?.isHost && activeRoomId) await gameService.nextRound(activeRoomId, room.currentRound, room.settings.totalRounds); };
 
+  // --- RENDER ---
   const renderContent = () => {
     switch (status) {
-      case GameStatus.LOBBY: return <Lobby onJoin={handleJoinRoom} />;
-      case GameStatus.WAITING: return room && me ? <WaitingRoom room={room} currentPlayer={me} onStart={handleStartGame} onUpdateSettings={handleUpdateSettings} onLeave={handleLeaveRoom} /> : null;
-      case GameStatus.PLAYING: return room && me && activeRoomId ? <GamePhase letter={room.currentLetter} roundDuration={room.settings.roundDuration} roomId={activeRoomId} playerId={me.id} onTimeUp={handleRoundTimeUp} onLeave={handleLeaveRoom} categories={room.settings.categories} roundStartTime={room.roundStartTime} /> : null;
-      case GameStatus.VOTING: return room && me ? (
-        <VotingPhase 
+      case GameStatus.LOBBY: 
+        return <Lobby onJoin={handleJoinRoom} />;
+      
+      case GameStatus.WAITING: 
+        return room && me ? (
+          <WaitingRoom 
+            room={room} 
+            currentPlayer={me} 
+            onStart={handleStartGame} 
+            onUpdateSettings={handleUpdateSettings} 
+            onLeave={handleLeaveRoom} 
+          />
+        ) : null;
+      
+      case GameStatus.PLAYING: 
+        return room && me && activeRoomId ? (
+          <GamePhase 
+            letter={room.currentLetter} 
+            roundDuration={room.settings.roundDuration} 
+            roomId={activeRoomId} 
+            playerId={me.id} 
+            onTimeUp={handleRoundTimeUp} 
+            onLeave={handleLeaveRoom} 
+            categories={room.settings.categories} 
+            roundStartTime={room.roundStartTime} 
+          />
+        ) : null;
+      
+      case GameStatus.VOTING: 
+        return room && me ? (
+          <VotingPhase 
             players={room.players} 
             answers={roundAnswers} 
             currentLetter={room.currentLetter} 
@@ -333,15 +391,34 @@ const App: React.FC = () => {
             revealedPlayers={room.revealedPlayers || []}
             onRevealCard={handleRevealCard}
             isLoading={loading} 
-        />
-      ) : null;
+          />
+        ) : null;
+      
       case GameStatus.SCORING:
-      case GameStatus.GAME_OVER: return room ? <Scoreboard players={room.players} onNextRound={status === GameStatus.GAME_OVER ? handleReset : handleNextRound} isGameOver={status === GameStatus.GAME_OVER} roundNumber={room.currentRound} isHost={me?.isHost || false} onLeave={handleLeaveRoom} /> : null;
-      default: return <div className="text-white animate-pulse">Yükleniyor...</div>;
+      case GameStatus.GAME_OVER: 
+        return room ? (
+          <Scoreboard 
+            players={room.players} 
+            onNextRound={status === GameStatus.GAME_OVER ? handleReset : handleNextRound} 
+            isGameOver={status === GameStatus.GAME_OVER} 
+            roundNumber={room.currentRound} 
+            isHost={me?.isHost || false} 
+            onLeave={handleLeaveRoom} 
+          />
+        ) : null;
+      
+      default: 
+        return <div className="text-white animate-pulse">Yükleniyor...</div>;
     }
   };
 
-  return <div className="min-h-screen bg-slate-900 text-slate-100 font-sans flex flex-col"><div className="container mx-auto px-4 py-6 flex-grow flex flex-col justify-center items-center w-full">{renderContent()}</div></div>;
+  return (
+    <div className="min-h-screen bg-slate-900 text-slate-100 font-sans flex flex-col">
+      <div className="container mx-auto px-4 py-6 flex-grow flex flex-col justify-center items-center w-full">
+        {renderContent()}
+      </div>
+    </div>
+  );
 };
 
 export default App;
