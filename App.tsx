@@ -151,22 +151,25 @@ const App: React.FC = () => {
       
       // 3. OYLAMA GÜNCELLEMELERİ (REALTIME FIX)
       if (update.type === 'VOTES_UPDATE') {
-          // Payload içindeki detayları al (gameService güncellemesi şart)
           const { eventType, new: newRecord, old: oldRecord } = update.payload;
 
           setCurrentVotes(prevVotes => {
               // SİLME (DELETE): Red geri alındıysa listeden anında çıkar
-              // REPLICA IDENTITY FULL sayesinde oldRecord.id dolu gelir.
               if (eventType === 'DELETE' && oldRecord?.id) {
                   return prevVotes.filter(v => v.id !== oldRecord.id);
               }
 
-              // EKLEME (INSERT): Yeni oy geldiyse listeye ekle
+              // EKLEME (INSERT): Yeni oy geldiyse
               if (eventType === 'INSERT' && newRecord) {
-                  // Zaten varsa ekleme (Optimistic update ile çakışmayı önle)
-                  const exists = prevVotes.some(v => v.id === newRecord.id);
-                  if (exists) return prevVotes;
+                  // 1. ÖNCE TEMİZLİK: Gelen gerçek oyla aynı işi yapan "temp" (geçici) oy varsa onu listeden uçur.
+                  // Böylece (1 Temp + 1 Real = 2 Oy) durumu oluşmaz ve ekran titremez.
+                  const cleanVotes = prevVotes.filter(v => 
+                    !(v.voterId === newRecord.voter_id && 
+                      v.targetPlayerId === newRecord.target_player_id && 
+                      v.category === newRecord.category)
+                  );
 
+                  // 2. Şimdi gerçek oyu ekle
                   const newVote: Vote = {
                       id: newRecord.id,
                       voterId: newRecord.voter_id,
@@ -174,12 +177,12 @@ const App: React.FC = () => {
                       category: newRecord.category,
                       isVeto: newRecord.is_veto
                   };
-                  return [...prevVotes, newVote];
+                  return [...cleanVotes, newVote];
               }
               return prevVotes;
           });
 
-          // GÜVENLİK: Her ihtimale karşı veritabanından doğrusunu da çek
+          // GÜVENLİK: Yine de tam listeyi arkadan getir (Veri tutarlılığı için)
           const currentRoom = roomRef.current;
           if (currentRoom) {
              refreshVotes(currentRoom.currentRound);
@@ -206,6 +209,15 @@ const App: React.FC = () => {
     localStorage.removeItem('harfbaz_session');
     if (me?.id) await gameService.leaveRoom(me.id);
     window.location.reload();
+  };
+
+  // --- YENİ EKLENEN: OYUNCU ATMA (KICK) FONKSİYONU ---
+  const handleKickPlayer = async (playerId: string) => {
+    if (me?.isHost && activeRoomId) {
+        if(window.confirm("Bu oyuncuyu odadan atmak istediğine emin misin?")) {
+            await gameService.kickPlayer(playerId);
+        }
+    }
   };
 
   const handleUpdateSettings = async (newSettings: RoomSettings) => {
@@ -355,6 +367,7 @@ const App: React.FC = () => {
             onStart={handleStartGame} 
             onUpdateSettings={handleUpdateSettings} 
             onLeave={handleLeaveRoom} 
+            onKick={handleKickPlayer} // <-- YENİ EKLENDİ
           />
         ) : null;
       

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Copy, Users, Play, Crown, Clock, Hash, Settings, Check, LogOut, Eye, EyeOff } from 'lucide-react';
+import { Copy, Users, Play, Crown, Clock, Hash, Settings, Check, LogOut, Eye, EyeOff, UserMinus } from 'lucide-react';
 import { Button, Card, Badge } from './UI';
 import { Room, Player, RoomSettings } from '../types';
 
@@ -9,9 +9,10 @@ interface WaitingRoomProps {
   onStart: () => void;
   onUpdateSettings: (settings: RoomSettings) => void;
   onLeave: () => void;
+  onKick: (playerId: string) => void; // <-- YENİ PROP
 }
 
-const WaitingRoom: React.FC<WaitingRoomProps> = ({ room, currentPlayer, onStart, onUpdateSettings, onLeave }) => {
+const WaitingRoom: React.FC<WaitingRoomProps> = ({ room, currentPlayer, onStart, onUpdateSettings, onLeave, onKick }) => {
   const [copied, setCopied] = useState(false);
   
   const [localDuration, setLocalDuration] = useState<string>(room.settings.roundDuration.toString());
@@ -336,6 +337,17 @@ const WaitingRoom: React.FC<WaitingRoomProps> = ({ room, currentPlayer, onStart,
                         </div>
                       )}
                    </div>
+
+                   {/* YENİ: KICK BUTONU (Sadece Host, Başkaları İçin Görür) */}
+                   {currentPlayer.isHost && player.id !== currentPlayer.id && (
+                        <button
+                            onClick={() => onKick(player.id)}
+                            className="absolute top-2 right-2 z-10 p-1.5 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all opacity-0 group-hover:opacity-100"
+                            title="Oyuncuyu At"
+                        >
+                            <UserMinus size={14} />
+                        </button>
+                   )}
 
                    {/* Info */}
                    <div className="text-center w-full min-w-0 mt-1">

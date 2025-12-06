@@ -22,5 +22,6 @@ export const AVATARS = [
 
 export const DEFAULT_SETTINGS = {
   roundDuration: 60,
-  totalRounds: 5
+  totalRounds: 5,
+  isHiddenMode: false
 };

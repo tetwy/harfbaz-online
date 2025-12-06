@@ -192,6 +192,10 @@ export const gameService = {
     }
   },
 
+  kickPlayer: async (playerId: string) => {
+    await supabase.from('players').delete().eq('id', playerId);
+  },
+
   getPlayers: async (roomId: string): Promise<Player[]> => {
     const { data } = await supabase.from('players').select('*').eq('room_id', roomId);
     return (data || []).map(mapDbPlayer);

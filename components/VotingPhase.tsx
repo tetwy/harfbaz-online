@@ -60,13 +60,15 @@ const VotingPhase: React.FC<VotingPhaseProps> = ({
   return (
     <div className="max-w-2xl w-full mx-auto space-y-6 animate-fade-in pb-28 relative px-4 md:px-0">
       
-      {/* ÇIKIŞ BUTONU */}
-      <button 
-        onClick={onLeave}
-        className="absolute -top-10 right-0 flex items-center gap-2 text-slate-500 hover:text-red-400 transition-colors text-xs font-bold z-40 bg-slate-900/50 px-3 py-1.5 rounded-lg border border-slate-700/50 hover:border-red-500/30"
-      >
-        <LogOut size={14} /> Odadan Ayrıl
-      </button>
+      {/* ÇIKIŞ BUTONU (Sticky Header) */}
+      <div className="sticky top-4 z-50 flex justify-end pointer-events-none">
+        <button 
+          onClick={onLeave}
+          className="pointer-events-auto flex items-center gap-2 text-slate-400 hover:text-red-400 transition-all text-xs font-bold bg-slate-900/90 backdrop-blur-md px-4 py-2 rounded-full border border-slate-700/50 hover:border-red-500/50 shadow-lg hover:shadow-red-900/20">
+          <LogOut size={14} /> 
+          <span>Odadan Ayrıl</span>
+        </button>
+      </div>
 
       <div className="text-center space-y-2 mt-6 md:mt-0">
         <Badge color="bg-yellow-500/20 text-yellow-300">OYLAMA ZAMANI</Badge>

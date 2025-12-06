@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { User, Play, Dices, ArrowRight } from 'lucide-react';
+import { User, Play, Dices, ArrowRight, Shuffle } from 'lucide-react';
 import { Button, Input, Card } from './UI';
 import { AVATARS, DEFAULT_SETTINGS } from '../constants';
 import { gameService } from '../services/gameService';
@@ -15,6 +15,13 @@ const Lobby: React.FC<LobbyProps> = ({ onJoin }) => {
   const [roomCode, setRoomCode] = useState('');
   const [avatar, setAvatar] = useState(AVATARS[0]);
   const [loading, setLoading] = useState(false);
+
+  // 2. Rastgele seçim fonksiyonunu ekle
+  const handleRandomAvatar = () => {
+    const randomIndex = Math.floor(Math.random() * AVATARS.length);
+    const randomAvatar = AVATARS[randomIndex];
+    setAvatar(randomAvatar);
+  };
 
   const handleCreate = async () => {
     if (!name) return;
@@ -59,9 +66,18 @@ const Lobby: React.FC<LobbyProps> = ({ onJoin }) => {
           <div className="mb-4 md:mb-6 flex items-center justify-between md:block">
             <div>
                 <h3 className="text-lg md:text-xl font-bold text-white flex items-center gap-2">
-                <Dices className="text-brand-400" size={20} />
-                <span className="hidden md:inline">Karakterini Seç</span>
-                <span className="md:hidden">Avatar</span>
+                  <Dices className="text-brand-400" size={20} />
+                  <span className="hidden md:inline">Karakterini Seç</span>
+                  <span className="md:hidden">Avatar</span>
+                  
+                  {/* 3. YENİ: Minimal Rastgele Butonu */}
+                  <button 
+                    onClick={handleRandomAvatar}
+                    className="ml-1 p-1.5 rounded-lg bg-slate-700/50 hover:bg-brand-500/20 text-slate-400 hover:text-brand-300 transition-all group"
+                    title="Rastgele Seç"
+                  >
+                    <Shuffle size={14} className="group-hover:rotate-180 transition-transform duration-500" />
+                  </button>
                 </h3>
                 <p className="text-xs md:text-sm text-slate-400 mt-1 hidden md:block">Seni temsil edecek bir avatar belirle.</p>
             </div>
