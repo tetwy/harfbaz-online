@@ -157,34 +157,12 @@ export const gameService = {
 
   leaveRoom: async (playerId: string) => {
     try {
-      const { data: leavingPlayer } = await supabase
-        .from('players')
-        .select('room_id, is_host')
-        .eq('id', playerId)
-        .maybeSingle();
-
-      if (!leavingPlayer) return;
-
-      await supabase.from('players').delete().eq('id', playerId);
-
-      if (leavingPlayer.is_host && leavingPlayer.room_id) {
-        const { data: newHostCandidate } = await supabase
-          .from('players')
-          .select('id')
-          .eq('room_id', leavingPlayer.room_id)
-          .order('created_at', { ascending: true })
-          .limit(1)
-          .maybeSingle();
-
-        if (newHostCandidate) {
-          await supabase
-            .from('players')
-            .update({ is_host: true })
-            .eq('id', newHostCandidate.id);
-        } else {
-            await supabase.from('rooms').delete().eq('id', leavingPlayer.room_id);
-        }
+      const { error } = await supabase.from('players').delete().eq('id', playerId);
+      
+      if (error) {
+        console.error("Odadan ayrılırken hata oluştu:", error);
       }
+      
     } catch (err) {
       console.error("Odadan ayrılma hatası:", err);
     }
@@ -318,16 +296,16 @@ export const gameService = {
   },
 
   toggleVote: async (roomId: string, roundNumber: number, voterId: string, targetPlayerId: string, category: string) => {
-    const { data: existingVote } = await supabase
-      .from('votes')
-      .select('id')
-      .match({ room_id: roomId, round_number: roundNumber, voter_id: voterId, target_player_id: targetPlayerId, category: category })
-      .maybeSingle();
+    const { error } = await supabase.rpc('toggle_vote_secure', {
+      p_room_id: roomId,
+      p_round_number: roundNumber,
+      p_voter_id: voterId,
+      p_target_player_id: targetPlayerId,
+      p_category: category
+    });
 
-    if (existingVote) {
-      await supabase.from('votes').delete().eq('id', existingVote.id);
-    } else {
-      await supabase.from('votes').insert({ room_id: roomId, round_number: roundNumber, voter_id: voterId, target_player_id: targetPlayerId, category: category, is_veto: true });
+    if (error) {
+      console.error("Oy verme hatası (RPC):", error);
     }
   },
 
@@ -343,45 +321,20 @@ export const gameService = {
   },
 
   calculateScores: async (roomId: string, roundNumber: number, players: Player[]) => {
-    const { data: votes } = await supabase.from('votes').select('*').eq('room_id', roomId).eq('round_number', roundNumber);
-    const { data: answersData } = await supabase.from('answers').select('*').eq('room_id', roomId).eq('round_number', roundNumber);
-    const { data: roomData } = await supabase.from('rooms').select('current_letter').eq('id', roomId).single();
-    const targetLetter = (roomData?.current_letter || '').toLocaleLowerCase('tr-TR');
+    // GÜVENLİK GÜNCELLEMESİ:
+    // Hesaplama işlemini tarayıcıdan kaldırdık. 
+    // Artık işlemi veritabanındaki "calculate_round_scores" fonksiyonu yapıyor.
+    // Bu sayede hile yapılamaz.
     
-    // Kelime havuzunu oluştur
-    const categoryWordPool: Record<string, string[]> = {};
-    CATEGORIES.forEach(cat => {
-      categoryWordPool[cat] = [];
-      answersData?.forEach((row: any) => {
-        const word = row.answers_json[cat];
-        if (word && word.trim()) categoryWordPool[cat].push(word.trim().toLocaleLowerCase('tr-TR'));
-      });
+    const { error } = await supabase.rpc('calculate_round_scores', { 
+      p_room_id: roomId, 
+      p_round_number: roundNumber 
     });
 
-    const updatePromises = players.map(async (player) => {
-      const playerAnswersRow = answersData?.find((a: any) => a.player_id === player.id);
-      const playerAnswers = playerAnswersRow ? playerAnswersRow.answers_json : {};
-      let roundScore = 0;
-
-      CATEGORIES.forEach(category => {
-        const rawAnswer = playerAnswers[category] || "";
-        const cleanAnswer = rawAnswer.trim();
-        const normalizedAnswer = cleanAnswer.toLocaleLowerCase('tr-TR');
-
-        if (!cleanAnswer) return;
-        if (!normalizedAnswer.startsWith(targetLetter)) return;
-
-        const vetoCount = votes?.filter((v: any) => v.target_player_id === player.id && v.category === category && v.is_veto).length || 0;
-        if (vetoCount > players.length / 2) return;
-
-        const duplicateCount = categoryWordPool[category].filter(w => w === normalizedAnswer).length;
-        if (duplicateCount > 1) { roundScore += 5; } else { roundScore += 10; }
-      });
-
-      return supabase.from('players').update({ score: player.score + roundScore }).eq('id', player.id);
-    });
-
-    await Promise.all(updatePromises);
+    if (error) {
+      console.error("Puan hesaplama hatası (RPC):", error);
+      throw error;
+    }
   },
 
   submitVotes: async (roomId: string, roundNumber: number, votes: Vote[]) => {},
