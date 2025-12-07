@@ -1,5 +1,5 @@
-import React from 'react';
-import { ThumbsDown, AlertCircle, ArrowRight, LogOut, Eye, EyeOff, Loader2 } from 'lucide-react'; 
+import React, { useMemo } from 'react'; // useMemo ekledik
+import { ThumbsDown, AlertCircle, ArrowRight, LogOut, Eye, EyeOff, Loader2, UserMinus } from 'lucide-react'; 
 import { Button, Badge } from './UI';
 import { CATEGORIES } from '../constants';
 import { Player, RoundAnswers, Vote } from '../types';
@@ -17,41 +17,50 @@ interface VotingPhaseProps {
   onVotingComplete: (votes: Vote[]) => void;
   initialBotVotes: Vote[];
   onLeave: () => void;
-  
-  // Mevcut Proplar
   isHiddenMode: boolean;
   revealedPlayers: string[];
   onRevealCard: (playerId: string) => void;
-  
-  // YENİ PROP: Yükleniyor Durumu
   isLoading?: boolean;
+  roundStartTime?: string; // <-- YENİ PROP
 }
 
 const VotingPhase: React.FC<VotingPhaseProps> = ({ 
   players, answers, currentLetter, currentPlayerId,
   currentVotes, currentCategoryIndex, isHost, onNextCategory, onToggleVote, onLeave,
   isHiddenMode, revealedPlayers, onRevealCard,
-  isLoading = false // Varsayılan değer
+  isLoading = false,
+  roundStartTime // <-- Alıyoruz
 }) => {
   
   const category = CATEGORIES[currentCategoryIndex];
-  const totalPlayers = players.length;
+  
+  // --- KRİTİK FİLTRELEME MANTIĞI ---
+  // Sadece tur başlamadan önce veya tur sırasında oyunda olanları "Aktif Oyuncu" say.
+  // Sonradan girenleri (Spectator) oylamaya katma.
+  const activePlayers = useMemo(() => {
+    if (!roundStartTime) return players;
+    const start = new Date(roundStartTime).getTime();
+    // 5 saniyelik bir tolerans (buffer) ekleyebiliriz, sunucu saati farkı için.
+    return players.filter(p => new Date(p.joinedAt).getTime() <= start + 5000);
+  }, [players, roundStartTime]);
+
+  // Eğer ben izleyiciysem (sonradan girdiysem)
+  const amISpectator = !activePlayers.find(p => p.id === currentPlayerId);
+
+  const totalActivePlayers = activePlayers.length;
   const isLastCategory = currentCategoryIndex === CATEGORIES.length - 1;
 
-  // Kart tıklama işleyicisi
   const handleCardClick = (targetPlayerId: string, isEmpty: boolean) => {
-    if (isEmpty) return;
+    if (isEmpty || amISpectator) return; // İzleyiciysem oy veremem
 
     const isMe = targetPlayerId === currentPlayerId;
     const isRevealed = revealedPlayers.includes(targetPlayerId);
 
-    // EĞER KART BENİMSE VE GİZLİYSE -> AÇ
     if (isMe && isHiddenMode && !isRevealed) {
         onRevealCard(targetPlayerId);
         return;
     }
 
-    // EĞER KART BAŞKASININSA -> OY VER (REDDET)
     if (!isMe) {
         onToggleVote(targetPlayerId);
     }
@@ -60,7 +69,15 @@ const VotingPhase: React.FC<VotingPhaseProps> = ({
   return (
     <div className="max-w-2xl w-full mx-auto space-y-6 animate-fade-in pb-28 relative px-4 md:px-0">
       
-      {/* ÇIKIŞ BUTONU (Sticky Header) */}
+      {/* İZLEYİCİ UYARISI */}
+      {amISpectator && (
+         <div className="bg-blue-500/20 text-blue-200 p-3 rounded-xl text-center text-sm border border-blue-500/50 mb-4 animate-pulse">
+            <UserMinus className="inline-block mr-2 w-4 h-4" />
+            Bu tura sonradan katıldın. Sadece izleyebilirsin, sonraki turda oyuna dahil olacaksın.
+         </div>
+      )}
+
+      {/* Sticky Header */}
       <div className="sticky top-4 z-50 flex justify-end pointer-events-none">
         <button 
           onClick={onLeave}
@@ -70,6 +87,7 @@ const VotingPhase: React.FC<VotingPhaseProps> = ({
         </button>
       </div>
 
+      {/* Header */}
       <div className="text-center space-y-2 mt-6 md:mt-0">
         <Badge color="bg-yellow-500/20 text-yellow-300">OYLAMA ZAMANI</Badge>
         <h2 className="text-3xl font-bold text-white">{category}</h2>
@@ -82,13 +100,11 @@ const VotingPhase: React.FC<VotingPhaseProps> = ({
                 <EyeOff size={12} /> Gizli Kelime Modu Aktif
             </div>
         )}
-        <p className="text-xs text-slate-500 max-w-md mx-auto">
-          {isHost ? 'Yönetici olarak ilerleyişi sen kontrol ediyorsun.' : 'Yönetici kategoriyi değiştirene kadar bekle.'}
-        </p>
       </div>
 
+      {/* Cards Grid - SADECE AKTİF OYUNCULARI GÖSTERİYORUZ */}
       <div className="space-y-3">
-        {players.map((player) => {
+        {activePlayers.map((player) => {
           const answer = answers[player.id]?.[category] || "";
           const isEmpty = !answer.trim();
           const isMe = player.id === currentPlayerId;
@@ -110,7 +126,8 @@ const VotingPhase: React.FC<VotingPhaseProps> = ({
              v.category === category
           );
           
-          const isRejected = voteCount > (totalPlayers / 2);
+          // EŞİK DEĞERİ: Toplam AKTİF oyuncu sayısının yarısından fazlası
+          const isRejected = voteCount > (totalActivePlayers / 2);
 
           return (
             <div 
@@ -122,6 +139,7 @@ const VotingPhase: React.FC<VotingPhaseProps> = ({
                   isHidden && isMe ? 'bg-purple-900/20 border-purple-500/50 hover:bg-purple-900/30' :
                   isRejected ? 'bg-red-950/30 border-red-500/50' : 
                   'bg-slate-800 border-slate-700 hover:border-slate-500'}
+                ${amISpectator ? 'cursor-default opacity-90' : ''}
               `}
             >
               {isRejected && !isHidden && (
@@ -158,7 +176,7 @@ const VotingPhase: React.FC<VotingPhaseProps> = ({
                      </div>
                    )}
 
-                   {!isEmpty && !isMe && (
+                   {!isEmpty && !isMe && !amISpectator && ( // İzleyiciler butonu göremez
                     <div className={`
                       flex items-center gap-2 px-3 py-1.5 rounded-full transition-all text-xs font-bold whitespace-nowrap
                       ${iVoted ? 'bg-red-500 text-white' : 'bg-slate-700 text-slate-400 group-hover:bg-slate-600'}
@@ -174,19 +192,19 @@ const VotingPhase: React.FC<VotingPhaseProps> = ({
               {!isEmpty && (
                 <div className="mt-3 pt-3 border-t border-white/5 flex items-center justify-between">
                    <div className="flex items-center gap-1">
-                      {Array.from({ length: totalPlayers }).map((_, idx) => (
+                      {/* Top sayısı sadece Aktif Oyunculara göre hesaplanır */}
+                      {Array.from({ length: totalActivePlayers }).map((_, idx) => (
                         <div 
                           key={idx} 
                           className={`
                             w-2.5 h-2.5 rounded-full transition-all duration-300
                             ${idx < voteCount ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)] scale-110' : 'bg-slate-700'}
                           `}
-                          title={idx < voteCount ? "Red Oyu" : "Onay/Beklemede"}
                         />
                       ))}
                    </div>
                    <div className="text-[10px] font-bold text-slate-500">
-                      {voteCount} / {totalPlayers} RED
+                      {voteCount} / {totalActivePlayers} RED
                       {isRejected && !isHidden && <span className="text-red-500 ml-2">(İPTAL)</span>}
                    </div>
                 </div>
@@ -200,9 +218,9 @@ const VotingPhase: React.FC<VotingPhaseProps> = ({
         <div className="fixed bottom-6 left-0 right-0 flex justify-center px-4 z-30 pointer-events-none">
           <Button 
             onClick={onNextCategory} 
-            disabled={isLoading} // Yükleniyorsa devre dışı
+            disabled={isLoading}
             className="w-full max-w-md shadow-2xl pointer-events-auto" 
-            icon={isLoading ? <Loader2 className="animate-spin" /> : <ArrowRight />} // İkon değişimi
+            icon={isLoading ? <Loader2 className="animate-spin" /> : <ArrowRight />}
           >
             {isLoading 
                 ? 'Hesaplanıyor...' 

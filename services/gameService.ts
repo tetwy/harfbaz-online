@@ -8,7 +8,8 @@ const mapDbPlayer = (dbPlayer: any): Player => ({
   avatar: dbPlayer.avatar,
   isHost: dbPlayer.is_host,
   score: dbPlayer.score,
-  isReady: dbPlayer.is_ready
+  isReady: dbPlayer.is_ready,
+  joinedAt: dbPlayer.created_at
 });
 
 // YARDIMCI: Kriptografik Güvenli Rastgele Index
@@ -45,8 +46,6 @@ export const gameService = {
   createRoom: async (hostName: string, avatar: string, settings: RoomSettings) => {
     const userId = await ensureAuth();
 
-    // DÜZELTME: Eğer kullanıcı zaten bir odada görünüyorsa, önce o kaydı temizle.
-    // Bu işlem 409 Conflict hatasını önler.
     await gameService.leaveRoom(userId);
 
     const roomCode = Math.random().toString(36).substring(2, 6).toUpperCase();
@@ -100,7 +99,6 @@ export const gameService = {
   joinRoom: async (roomCode: string, playerName: string, avatar: string) => {
     const userId = await ensureAuth();
 
-    // DÜZELTME: Eski odayı/kaydı temizle
     await gameService.leaveRoom(userId);
 
     const { data: roomData, error: roomFetchError } = await supabase.from('rooms').select('*').eq('code', roomCode).single();
@@ -360,7 +358,6 @@ export const gameService = {
       });
     });
 
-    // PARALEL İŞLEM: Promise.all ile tüm güncellemeleri aynı anda gönder
     const updatePromises = players.map(async (player) => {
       const playerAnswersRow = answersData?.find((a: any) => a.player_id === player.id);
       const playerAnswers = playerAnswersRow ? playerAnswersRow.answers_json : {};
@@ -389,11 +386,14 @@ export const gameService = {
 
   submitVotes: async (roomId: string, roundNumber: number, votes: Vote[]) => {},
 
+  // !!! DÜZELTİLEN KISIM BURASI !!!
   subscribeToRoom: (roomId: string, onUpdate: (payload: any) => void) => {
       const channel = supabase.channel(`room:${roomId}`)
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` }, (payload) => onUpdate({ type: 'ROOM_UPDATE', data: payload.new }))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'players', filter: `room_id=eq.${roomId}` }, () => onUpdate({ type: 'PLAYER_UPDATE' }))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'votes', filter: `room_id=eq.${roomId}` }, (payload) => onUpdate({ type: 'VOTES_UPDATE', payload: payload }))
+        // YENİ EKLENEN SATIR: Cevapları da canlı dinle!
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'answers', filter: `room_id=eq.${roomId}` }, (payload) => onUpdate({ type: 'ANSWERS_UPDATE', payload: payload }))
         .subscribe();
       return () => { supabase.removeChannel(channel); };
   }
