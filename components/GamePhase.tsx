@@ -65,8 +65,10 @@ const GamePhase: React.FC<GamePhaseProps> = ({
 
     return () => {
       clearTimeout(timeout);
-      // Only submit if properly mounted (not during HMR hot reload)
-      if (mountedRef.current && !submittedRef.current) {
+      // Only submit if properly mounted, not already submitted, AND time has expired
+      // Don't auto-submit when transitioning phases (when another user submits)
+      const timeExpired = calculateInitialTime() <= 0;
+      if (mountedRef.current && !submittedRef.current && timeExpired) {
         onTimeUp(answersRef.current);
       }
     };
