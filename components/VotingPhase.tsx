@@ -1,6 +1,7 @@
-import React, { useMemo } from 'react'; // useMemo ekledik
-import { ThumbsDown, AlertCircle, ArrowRight, LogOut, Eye, EyeOff, Loader2, UserMinus } from 'lucide-react'; 
-import { Button, Badge } from './UI';
+import React, { useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { ThumbsDown, AlertCircle, ArrowRight, LogOut, Eye, EyeOff, Loader2, UserMinus } from 'lucide-react';
+import { Button } from './UI';
 import { CATEGORIES } from '../constants';
 import { Player, RoundAnswers, Vote } from '../types';
 
@@ -14,219 +15,273 @@ interface VotingPhaseProps {
   isHost: boolean;
   onNextCategory: () => void;
   onToggleVote: (targetPlayerId: string) => void;
-  onVotingComplete: (votes: Vote[]) => void;
-  initialBotVotes: Vote[];
   onLeave: () => void;
   isHiddenMode: boolean;
   revealedPlayers: string[];
   onRevealCard: (playerId: string) => void;
   isLoading?: boolean;
-  roundStartTime?: string; // <-- YENİ PROP
+  roundStartTime?: string;
 }
 
-const VotingPhase: React.FC<VotingPhaseProps> = ({ 
+const VotingPhase: React.FC<VotingPhaseProps> = ({
   players, answers, currentLetter, currentPlayerId,
   currentVotes, currentCategoryIndex, isHost, onNextCategory, onToggleVote, onLeave,
   isHiddenMode, revealedPlayers, onRevealCard,
-  isLoading = false,
-  roundStartTime // <-- Alıyoruz
+  isLoading = false, roundStartTime
 }) => {
-  
+
   const category = CATEGORIES[currentCategoryIndex];
-  
-  // --- KRİTİK FİLTRELEME MANTIĞI ---
-  // Sadece tur başlamadan önce veya tur sırasında oyunda olanları "Aktif Oyuncu" say.
-  // Sonradan girenleri (Spectator) oylamaya katma.
+
   const activePlayers = useMemo(() => {
     if (!roundStartTime) return players;
     const start = new Date(roundStartTime).getTime();
-    // 5 saniyelik bir tolerans (buffer) ekleyebiliriz, sunucu saati farkı için.
     return players.filter(p => new Date(p.joinedAt).getTime() <= start + 5000);
   }, [players, roundStartTime]);
 
-  // Eğer ben izleyiciysem (sonradan girdiysem)
   const amISpectator = !activePlayers.find(p => p.id === currentPlayerId);
-
   const totalActivePlayers = activePlayers.length;
   const isLastCategory = currentCategoryIndex === CATEGORIES.length - 1;
 
   const handleCardClick = (targetPlayerId: string, isEmpty: boolean) => {
-    if (isEmpty || amISpectator) return; // İzleyiciysem oy veremem
-
+    if (isEmpty || amISpectator) return;
     const isMe = targetPlayerId === currentPlayerId;
     const isRevealed = revealedPlayers.includes(targetPlayerId);
 
     if (isMe && isHiddenMode && !isRevealed) {
-        onRevealCard(targetPlayerId);
-        return;
+      onRevealCard(targetPlayerId);
+      return;
     }
-
-    if (!isMe) {
-        onToggleVote(targetPlayerId);
-    }
+    if (!isMe) onToggleVote(targetPlayerId);
   };
 
   return (
-    <div className="max-w-2xl w-full mx-auto space-y-6 animate-fade-in pb-28 relative px-4 md:px-0">
-      
-      {/* İZLEYİCİ UYARISI */}
-      {amISpectator && (
-         <div className="bg-blue-500/20 text-blue-200 p-3 rounded-xl text-center text-sm border border-blue-500/50 mb-4 animate-pulse">
-            <UserMinus className="inline-block mr-2 w-4 h-4" />
-            Bu tura sonradan katıldın. Sadece izleyebilirsin, sonraki turda oyuna dahil olacaksın.
-         </div>
-      )}
+    <div className="h-screen w-screen fixed inset-0 bg-[#0a0a1a] overflow-hidden flex flex-col">
 
-      {/* Sticky Header */}
-      <div className="sticky top-4 z-50 flex justify-end pointer-events-none">
-        <button 
-          onClick={onLeave}
-          className="pointer-events-auto flex items-center gap-2 text-slate-400 hover:text-red-400 transition-all text-xs font-bold bg-slate-900/90 backdrop-blur-md px-4 py-2 rounded-full border border-slate-700/50 hover:border-red-500/50 shadow-lg hover:shadow-red-900/20">
-          <LogOut size={14} /> 
-          <span>Odadan Ayrıl</span>
-        </button>
+      {/* Background */}
+      <div className="absolute inset-0">
+        <div className="absolute inset-0 bg-gradient-to-br from-purple-900/30 via-[#0a0a1a] to-orange-900/20" />
+        <motion.div
+          className="absolute top-0 left-0 w-1/2 h-1/2"
+          style={{ background: 'radial-gradient(circle at 20% 20%, rgba(234, 179, 8, 0.1) 0%, transparent 50%)' }}
+        />
       </div>
+
+      {/* Leave Button */}
+      <motion.button
+        onClick={onLeave}
+        className="fixed top-4 right-4 z-50 flex items-center gap-2 text-slate-500 hover:text-red-400 transition-all text-sm px-3 py-2 rounded-xl bg-white/5 hover:bg-red-500/10"
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
+      >
+        <LogOut size={16} /> Çık
+      </motion.button>
 
       {/* Header */}
-      <div className="text-center space-y-2 mt-6 md:mt-0">
-        <Badge color="bg-yellow-500/20 text-yellow-300">OYLAMA ZAMANI</Badge>
-        <h2 className="text-3xl font-bold text-white">{category}</h2>
-        <div className="flex items-center justify-center gap-2 text-slate-400">
-           <span>Harf:</span>
-           <span className="w-8 h-8 flex items-center justify-center bg-brand-600 text-white rounded-lg font-bold text-lg">{currentLetter}</span>
-        </div>
-        {isHiddenMode && (
-            <div className="flex items-center justify-center gap-2 text-xs text-purple-400 bg-purple-900/20 px-3 py-1 rounded-full mx-auto w-fit">
-                <EyeOff size={12} /> Gizli Kelime Modu Aktif
+      <div className="relative z-10 p-4 pt-14 md:pt-6 md:p-6">
+        <div className="max-w-2xl mx-auto">
+
+          {/* Spectator Warning */}
+          <AnimatePresence>
+            {amISpectator && (
+              <motion.div
+                className="bg-blue-500/10 text-blue-300 p-3 rounded-xl text-center text-sm border border-blue-500/30 mb-4"
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+              >
+                <UserMinus className="inline-block mr-2 w-4 h-4" />
+                Bu tura sonradan katıldın. Sadece izleyebilirsin.
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Category Header */}
+          <div className="flex items-center justify-between gap-4">
+
+            {/* Letter Badge */}
+            <motion.div
+              className="relative"
+              animate={{ y: [0, -3, 0] }}
+              transition={{ duration: 2, repeat: Infinity }}
+            >
+              <div className="w-14 h-14 bg-gradient-to-br from-yellow-500 to-orange-500 rounded-xl flex items-center justify-center shadow-lg shadow-yellow-500/20">
+                <span className="text-2xl font-black text-white">{currentLetter}</span>
+              </div>
+            </motion.div>
+
+            {/* Category Name */}
+            <div className="flex-1">
+              <AnimatePresence mode="wait">
+                <motion.h2
+                  key={category}
+                  className="text-2xl md:text-3xl font-black text-white"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                >
+                  {category}
+                </motion.h2>
+              </AnimatePresence>
+
+              {/* Category Progress */}
+              <div className="flex items-center gap-1 mt-2">
+                {CATEGORIES.map((_, idx) => (
+                  <div
+                    key={idx}
+                    className={`h-1 rounded-full flex-1 transition-all ${idx < currentCategoryIndex ? 'bg-purple-500' :
+                      idx === currentCategoryIndex ? 'bg-purple-400' : 'bg-white/10'
+                      }`}
+                  />
+                ))}
+              </div>
             </div>
-        )}
+
+            {/* Hidden Mode Badge */}
+            {isHiddenMode && (
+              <div className="flex items-center gap-1 text-xs text-purple-300 bg-purple-900/30 px-3 py-1.5 rounded-full">
+                <EyeOff size={12} /> Gizli
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
-      {/* Cards Grid - SADECE AKTİF OYUNCULARI GÖSTERİYORUZ */}
-      <div className="space-y-3">
-        {activePlayers.map((player) => {
-          const answer = answers[player.id]?.[category] || "";
-          const isEmpty = !answer.trim();
-          const isMe = player.id === currentPlayerId;
-          const isRevealed = revealedPlayers.includes(player.id);
-          
-          const isHidden = isHiddenMode && !isRevealed;
-          const invalidStart = !isHidden && answer && !answer.trim().toLocaleUpperCase('tr-TR').startsWith(currentLetter);
+      {/* Player Cards */}
+      <div className="relative z-10 flex-1 overflow-auto p-4 md:p-6 pt-0">
+        <div className="max-w-2xl mx-auto space-y-3">
+          {activePlayers.map((player, index) => {
+            const answer = answers[player.id]?.[category] || "";
+            const isEmpty = !answer.trim();
+            const isMe = player.id === currentPlayerId;
+            const isRevealed = revealedPlayers.includes(player.id);
+            const isHidden = isHiddenMode && !isRevealed;
+            const invalidStart = !isHidden && answer && !answer.trim().toLocaleUpperCase('tr-TR').startsWith(currentLetter);
 
-          const votesForThisCard = currentVotes.filter(v => 
-            v.targetPlayerId === player.id && 
-            v.category === category && 
-            v.isVeto
-          );
+            const votesForThisCard = currentVotes.filter(v =>
+              v.targetPlayerId === player.id && v.category === category && v.isVeto
+            );
+            const voteCount = votesForThisCard.length;
+            const iVoted = currentVotes.some(v =>
+              v.voterId === currentPlayerId && v.targetPlayerId === player.id && v.category === category
+            );
+            const isRejected = voteCount > (totalActivePlayers / 2);
 
-          const voteCount = votesForThisCard.length;
-          const iVoted = currentVotes.some(v => 
-             v.voterId === currentPlayerId && 
-             v.targetPlayerId === player.id && 
-             v.category === category
-          );
-          
-          // EŞİK DEĞERİ: Toplam AKTİF oyuncu sayısının yarısından fazlası
-          const isRejected = voteCount > (totalActivePlayers / 2);
+            return (
+              <motion.div
+                key={player.id}
+                onClick={() => handleCardClick(player.id, isEmpty)}
+                className={`
+                  relative bg-[#12121f]/80 rounded-xl p-4 transition-all cursor-pointer group border
+                  ${isEmpty ? 'opacity-50 cursor-not-allowed border-white/5' : 'border-white/5 hover:border-white/10'}
+                  ${isHidden && isMe ? 'border-purple-500/50 bg-purple-500/5' : ''}
+                  ${isRejected && !isHidden ? 'border-red-500/30 bg-red-500/5' : ''}
+                  ${iVoted && !isMe ? 'border-red-500/50' : ''}
+                  ${amISpectator ? 'cursor-default' : ''}
+                `}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.05 }}
+              >
+                <div className="flex items-center gap-4">
+                  {/* Avatar */}
+                  <div className="text-3xl">{player.avatar}</div>
 
-          return (
-            <div 
-              key={player.id}
-              onClick={() => handleCardClick(player.id, isEmpty)}
-              className={`
-                relative p-4 rounded-xl border-2 transition-all cursor-pointer select-none group overflow-hidden
-                ${isEmpty ? 'bg-slate-800/30 border-slate-800 opacity-60 cursor-not-allowed' : 
-                  isHidden && isMe ? 'bg-purple-900/20 border-purple-500/50 hover:bg-purple-900/30' :
-                  isRejected ? 'bg-red-950/30 border-red-500/50' : 
-                  'bg-slate-800 border-slate-700 hover:border-slate-500'}
-                ${amISpectator ? 'cursor-default opacity-90' : ''}
-              `}
-            >
-              {isRejected && !isHidden && (
-                <div className="absolute inset-0 bg-[linear-gradient(45deg,transparent_25%,rgba(239,68,68,0.1)_25%,rgba(239,68,68,0.1)_50%,transparent_50%,transparent_75%,rgba(239,68,68,0.1)_75%,rgba(239,68,68,0.1)_100%)] bg-[length:20px_20px] pointer-events-none"></div>
-              )}
-
-              <div className="flex items-center justify-between relative z-10">
-                <div className="flex items-center gap-4 flex-1 min-w-0">
-                  <span className="text-3xl filter drop-shadow-lg flex-shrink-0">{player.avatar}</span>
-                  <div className="flex flex-col items-start min-w-0">
-                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-0.5">{player.name}</span>
-                    
-                    <span className={`text-xl font-medium transition-all truncate w-full 
-                        ${isEmpty ? 'text-slate-600 italic' : 'text-white'} 
-                        ${isRejected && !isHidden ? 'line-through decoration-2 decoration-red-500 text-red-200/70' : ''}
-                        ${isHidden ? 'tracking-widest text-slate-500' : ''}
-                    `}>
+                  {/* Content */}
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs text-slate-500 font-medium">{player.name}</div>
+                    <div className={`text-lg font-semibold truncate ${isEmpty ? 'text-slate-600 italic' :
+                      isRejected && !isHidden ? 'text-red-300 line-through' :
+                        isHidden ? 'text-slate-500 tracking-widest' : 'text-white'
+                      }`}>
                       {isEmpty ? 'Cevap yok' : isHidden ? '••••••' : answer}
-                    </span>
+                    </div>
+
+                    {/* Vote Dots - below the answer (show on all cards including own) */}
+                    {!isEmpty && !isHidden && (
+                      <div className="flex items-center gap-1 mt-2">
+                        {activePlayers.filter(p => p.id !== player.id).map((voter) => {
+                          const hasVoted = currentVotes.some(v =>
+                            v.voterId === voter.id && v.targetPlayerId === player.id && v.category === category && v.isVeto
+                          );
+                          return (
+                            <motion.div
+                              key={voter.id}
+                              className={`w-2.5 h-2.5 rounded-full transition-all ${hasVoted ? 'bg-red-500' : 'bg-white/10'}`}
+                              animate={hasVoted ? { scale: [1, 1.3, 1] } : {}}
+                              transition={{ duration: 0.3 }}
+                            />
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex items-center gap-2">
+                    {isHidden && isMe && (
+                      <motion.div
+                        className="flex items-center gap-1 text-xs text-purple-300 bg-purple-900/50 px-2 py-1 rounded-lg"
+                        animate={{ scale: [1, 1.05, 1] }}
+                        transition={{ duration: 1, repeat: Infinity }}
+                      >
+                        <Eye size={12} /> Göster
+                      </motion.div>
+                    )}
+
+                    {invalidStart && !isEmpty && !isRejected && (
+                      <div className="flex items-center gap-1 text-xs text-yellow-500 bg-yellow-900/30 px-2 py-1 rounded-lg">
+                        <AlertCircle size={12} />
+                      </div>
+                    )}
+
+                    {!isEmpty && !isMe && !isHidden && !amISpectator && (
+                      <motion.div
+                        className={`p-2 rounded-lg transition-all ${iVoted
+                          ? 'bg-red-500 text-white'
+                          : 'bg-white/5 text-slate-400 group-hover:bg-red-500/20 group-hover:text-red-400'
+                          }`}
+                        whileTap={{ scale: 0.9 }}
+                      >
+                        <ThumbsDown size={16} />
+                      </motion.div>
+                    )}
+
                   </div>
                 </div>
-
-                <div className="flex flex-col items-end justify-center gap-2 pl-2">
-                   
-                   {isHidden && isMe && (
-                       <div className="flex items-center gap-1 text-[10px] text-purple-300 font-bold bg-purple-900/50 px-2 py-1 rounded-full whitespace-nowrap animate-pulse">
-                           <Eye size={12} /> DOKUN VE AÇ
-                       </div>
-                   )}
-
-                   {invalidStart && !isEmpty && !isRejected && (
-                     <div className="flex items-center gap-1 text-[10px] text-yellow-500 font-bold bg-yellow-900/30 px-2 py-1 rounded-full whitespace-nowrap">
-                        <AlertCircle size={10} /> HATALI
-                     </div>
-                   )}
-
-                   {!isEmpty && !isMe && !amISpectator && ( // İzleyiciler butonu göremez
-                    <div className={`
-                      flex items-center gap-2 px-3 py-1.5 rounded-full transition-all text-xs font-bold whitespace-nowrap
-                      ${iVoted ? 'bg-red-500 text-white' : 'bg-slate-700 text-slate-400 group-hover:bg-slate-600'}
-                    `}>
-                      <ThumbsDown size={14} className={iVoted ? 'fill-current' : ''} />
-                      {iVoted ? 'RED' : 'REDDET'}
-                    </div>
-                  )}
-                  {isMe && <Badge>Sen</Badge>}
-                </div>
-              </div>
-
-              {!isEmpty && (
-                <div className="mt-3 pt-3 border-t border-white/5 flex items-center justify-between">
-                   <div className="flex items-center gap-1">
-                      {/* Top sayısı sadece Aktif Oyunculara göre hesaplanır */}
-                      {Array.from({ length: totalActivePlayers }).map((_, idx) => (
-                        <div 
-                          key={idx} 
-                          className={`
-                            w-2.5 h-2.5 rounded-full transition-all duration-300
-                            ${idx < voteCount ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)] scale-110' : 'bg-slate-700'}
-                          `}
-                        />
-                      ))}
-                   </div>
-                   <div className="text-[10px] font-bold text-slate-500">
-                      {voteCount} / {totalActivePlayers} RED
-                      {isRejected && !isHidden && <span className="text-red-500 ml-2">(İPTAL)</span>}
-                   </div>
-                </div>
-              )}
-            </div>
-          );
-        })}
+              </motion.div>
+            );
+          })}
+        </div>
       </div>
 
+      {/* Footer - Next Button */}
       {isHost && (
-        <div className="fixed bottom-6 left-0 right-0 flex justify-center px-4 z-30 pointer-events-none">
-          <Button 
-            onClick={onNextCategory} 
-            disabled={isLoading}
-            className="w-full max-w-md shadow-2xl pointer-events-auto" 
-            icon={isLoading ? <Loader2 className="animate-spin" /> : <ArrowRight />}
-          >
-            {isLoading 
-                ? 'Hesaplanıyor...' 
-                : (isLastCategory ? 'Oylamayı Bitir' : 'Sıradaki Kategori')
-            }
-          </Button>
+        <div className="relative z-10 p-4 md:p-6 bg-gradient-to-t from-[#0a0a1a] to-transparent">
+          <div className="max-w-2xl mx-auto">
+            <Button
+              onClick={onNextCategory}
+              disabled={isLoading}
+              className="w-full py-4 text-lg font-bold"
+              icon={isLoading ? <Loader2 className="animate-spin" size={20} /> : <ArrowRight size={20} />}
+            >
+              {isLoading ? 'Yükleniyor...' : isLastCategory ? 'Sonuçları Göster' : 'Sonraki Kategori'}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Non-host waiting */}
+      {!isHost && (
+        <div className="relative z-10 p-4 md:p-6 bg-gradient-to-t from-[#0a0a1a] to-transparent">
+          <div className="max-w-2xl mx-auto">
+            <motion.div
+              className="text-center p-4 rounded-xl bg-white/5 border border-white/5"
+              animate={{ opacity: [0.5, 1, 0.5] }}
+              transition={{ duration: 2, repeat: Infinity }}
+            >
+              <p className="text-slate-400 text-sm">Yönetici devam ettirmeyi bekleniyor...</p>
+            </motion.div>
+          </div>
         </div>
       )}
     </div>

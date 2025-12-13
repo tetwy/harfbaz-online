@@ -20,7 +20,8 @@ export interface Player {
 export interface RoomSettings {
   roundDuration: number; // seconds
   totalRounds: number;
-  isHiddenMode: boolean; // YENİ: Gizli Kelime Modu
+  isHiddenMode: boolean; // Gizli Kelime Modu
+  categories?: string[]; // Kategori listesi
 }
 
 export interface Room {

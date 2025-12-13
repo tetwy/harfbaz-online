@@ -37,7 +37,7 @@ const ensureAuth = async () => {
   const { data, error } = await supabase.auth.signInAnonymously();
   if (error) throw error;
   if (!data.user) throw new Error("Kullanıcı oluşturulamadı");
-  
+
   return data.user.id;
 };
 
@@ -49,19 +49,19 @@ export const gameService = {
     await gameService.leaveRoom(userId);
 
     const roomCode = Math.random().toString(36).substring(2, 6).toUpperCase();
-    const initialSettings = { 
-      ...settings, 
+    const initialSettings = {
+      ...settings,
       isHiddenMode: settings.isHiddenMode || false,
-      categories: CATEGORIES 
+      categories: CATEGORIES
     };
 
     const { data: roomData, error: roomError } = await supabase
       .from('rooms')
-      .insert({ 
-        code: roomCode, 
-        status: 'LOBBY', 
-        settings: initialSettings, 
-        voting_category_index: 0, 
+      .insert({
+        code: roomCode,
+        status: 'LOBBY',
+        settings: initialSettings,
+        voting_category_index: 0,
         used_letters: [],
         revealed_players: []
       })
@@ -71,18 +71,18 @@ export const gameService = {
 
     const { data: playerData, error: playerError } = await supabase
       .from('players')
-      .insert({ 
-        id: userId, 
-        room_id: roomData.id, 
-        name: hostName, 
-        avatar, 
-        is_host: true, 
-        is_ready: true 
+      .insert({
+        id: userId,
+        room_id: roomData.id,
+        name: hostName,
+        avatar,
+        is_host: true,
+        is_ready: true
       })
       .select().single();
 
     if (playerError) throw playerError;
-    
+
     const mappedRoom = {
       ...roomData,
       currentLetter: roomData.current_letter,
@@ -106,20 +106,20 @@ export const gameService = {
 
     const { data: playerData, error: playerError } = await supabase
       .from('players')
-      .insert({ 
-        id: userId, 
-        room_id: roomData.id, 
-        name: playerName, 
-        avatar, 
-        is_host: false, 
-        is_ready: true 
+      .insert({
+        id: userId,
+        room_id: roomData.id,
+        name: playerName,
+        avatar,
+        is_host: false,
+        is_ready: true
       })
       .select().single();
 
     if (playerError) throw playerError;
-    
+
     const { data: allPlayers } = await supabase.from('players').select('*').eq('room_id', roomData.id);
-    
+
     const mappedRoom = {
       ...roomData,
       currentLetter: roomData.current_letter,
@@ -134,14 +134,14 @@ export const gameService = {
   },
 
   reconnect: async (roomId: string, playerId: string) => {
-    const userId = await ensureAuth();
-    
+    await ensureAuth(); // Session kontrolü
+
     const { data: roomData } = await supabase.from('rooms').select('*').eq('id', roomId).single();
     if (!roomData) return null;
     const { data: playerData } = await supabase.from('players').select('*').eq('id', playerId).single();
     if (!playerData) return null;
     const { data: allPlayers } = await supabase.from('players').select('*').eq('room_id', roomId);
-    
+
     const mappedRoom = {
       ...roomData,
       currentLetter: roomData.current_letter,
@@ -158,11 +158,11 @@ export const gameService = {
   leaveRoom: async (playerId: string) => {
     try {
       const { error } = await supabase.from('players').delete().eq('id', playerId);
-      
+
       if (error) {
         console.error("Odadan ayrılırken hata oluştu:", error);
       }
-      
+
     } catch (err) {
       console.error("Odadan ayrılma hatası:", err);
     }
@@ -178,17 +178,17 @@ export const gameService = {
   },
 
   startGame: async (roomId: string) => {
-    const letter = getUniqueRandomLetter([]); 
-    const now = new Date().toISOString(); 
+    const letter = getUniqueRandomLetter([]);
+    const now = new Date().toISOString();
 
-    await supabase.from('rooms').update({ 
-      status: 'PLAYING', 
-      current_letter: letter, 
-      current_round: 1, 
+    await supabase.from('rooms').update({
+      status: 'PLAYING',
+      current_letter: letter,
+      current_round: 1,
       voting_category_index: 0,
       used_letters: [letter],
       revealed_players: [],
-      round_start_time: now 
+      round_start_time: now
     }).eq('id', roomId);
   },
 
@@ -199,16 +199,16 @@ export const gameService = {
       const { data: roomData } = await supabase.from('rooms').select('used_letters').eq('id', roomId).single();
       const usedLetters = roomData?.used_letters || [];
       const letter = getUniqueRandomLetter(usedLetters);
-      const now = new Date().toISOString(); 
+      const now = new Date().toISOString();
 
-      await supabase.from('rooms').update({ 
-        status: 'PLAYING', 
-        current_letter: letter, 
-        current_round: currentRound + 1, 
+      await supabase.from('rooms').update({
+        status: 'PLAYING',
+        current_letter: letter,
+        current_round: currentRound + 1,
         voting_category_index: 0,
         used_letters: [...usedLetters, letter],
         revealed_players: [],
-        round_start_time: now 
+        round_start_time: now
       }).eq('id', roomId);
     }
   },
@@ -216,7 +216,7 @@ export const gameService = {
   revealCard: async (roomId: string, playerId: string) => {
     const { data: room } = await supabase.from('rooms').select('revealed_players').eq('id', roomId).single();
     const currentRevealed = room?.revealed_players || [];
-    
+
     if (!currentRevealed.includes(playerId)) {
       await supabase.from('rooms').update({
         revealed_players: [...currentRevealed, playerId]
@@ -227,8 +227,8 @@ export const gameService = {
   updateStatus: async (roomId: string, status: string) => {
     const updateData: any = { status };
     if (status === 'VOTING') {
-        updateData.voting_category_index = 0;
-        updateData.revealed_players = []; 
+      updateData.voting_category_index = 0;
+      updateData.revealed_players = [];
     }
     await supabase.from('rooms').update(updateData).eq('id', roomId);
   },
@@ -238,9 +238,9 @@ export const gameService = {
   },
 
   updateVotingIndex: async (roomId: string, index: number) => {
-    await supabase.from('rooms').update({ 
-        voting_category_index: index,
-        revealed_players: [] 
+    await supabase.from('rooms').update({
+      voting_category_index: index,
+      revealed_players: []
     }).eq('id', roomId);
   },
 
@@ -248,38 +248,38 @@ export const gameService = {
     const { data: currentRoom } = await supabase.from('rooms').select('settings').eq('id', roomId).single();
     const newSettings = {
       ...(currentRoom?.settings || {}),
-      categories: CATEGORIES 
+      categories: CATEGORIES
     };
 
     await supabase.from('answers').delete().eq('room_id', roomId);
     await supabase.from('votes').delete().eq('room_id', roomId);
     await supabase.from('players').update({ score: 0, is_ready: true }).eq('room_id', roomId);
-    
-    await supabase.from('rooms').update({ 
-      status: 'LOBBY', 
-      current_round: 1, 
-      current_letter: null, 
-      voting_category_index: 0, 
+
+    await supabase.from('rooms').update({
+      status: 'LOBBY',
+      current_round: 1,
+      current_letter: null,
+      voting_category_index: 0,
       used_letters: [],
       revealed_players: [],
-      round_start_time: null, 
-      settings: newSettings 
+      round_start_time: null,
+      settings: newSettings
     }).eq('id', roomId);
   },
 
   submitAnswers: async (roomId: string, playerId: string, roundNumber: number, answers: Record<string, string>) => {
-    const { error } = await supabase.from('answers').upsert({ 
-      room_id: roomId, 
-      player_id: playerId, 
-      round_number: roundNumber, 
-      answers_json: answers 
-    }, { 
+    const { error } = await supabase.from('answers').upsert({
+      room_id: roomId,
+      player_id: playerId,
+      round_number: roundNumber,
+      answers_json: answers
+    }, {
       onConflict: 'room_id, player_id, round_number'
     });
 
     if (error) {
       console.error("Cevap gönderme hatası:", error);
-      throw error; 
+      throw error;
     }
   },
 
@@ -289,7 +289,24 @@ export const gameService = {
   },
 
   getRoundAnswers: async (roomId: string, roundNumber: number): Promise<RoundAnswers> => {
-    const { data } = await supabase.from('answers').select('player_id, answers_json').eq('room_id', roomId).eq('round_number', roundNumber);
+    // Retry mekanizması - realtime henüz senkronize olmamış olabilir
+    let retries = 5;
+    let data: any[] | null = null;
+
+    while (retries > 0) {
+      const result = await supabase
+        .from('answers')
+        .select('player_id, answers_json')
+        .eq('room_id', roomId)
+        .eq('round_number', roundNumber);
+
+      data = result.data;
+      if (data && data.length > 0) break;
+
+      retries--;
+      if (retries > 0) await new Promise(r => setTimeout(r, 300));
+    }
+
     const result: RoundAnswers = {};
     data?.forEach((item: any) => { result[item.player_id] = item.answers_json; });
     return result;
@@ -311,12 +328,12 @@ export const gameService = {
 
   getVotes: async (roomId: string, roundNumber: number): Promise<Vote[]> => {
     const { data } = await supabase.from('votes').select('id, voter_id, target_player_id, category, is_veto').eq('room_id', roomId).eq('round_number', roundNumber);
-    return (data || []).map((v: any) => ({ 
-        id: v.id,
-        voterId: v.voter_id, 
-        targetPlayerId: v.target_player_id, 
-        category: v.category, 
-        isVeto: v.is_veto 
+    return (data || []).map((v: any) => ({
+      id: v.id,
+      voterId: v.voter_id,
+      targetPlayerId: v.target_player_id,
+      category: v.category,
+      isVeto: v.is_veto
     }));
   },
 
@@ -325,10 +342,10 @@ export const gameService = {
     // Hesaplama işlemini tarayıcıdan kaldırdık. 
     // Artık işlemi veritabanındaki "calculate_round_scores" fonksiyonu yapıyor.
     // Bu sayede hile yapılamaz.
-    
-    const { error } = await supabase.rpc('calculate_round_scores', { 
-      p_room_id: roomId, 
-      p_round_number: roundNumber 
+
+    const { error } = await supabase.rpc('calculate_round_scores', {
+      p_room_id: roomId,
+      p_round_number: roundNumber
     });
 
     if (error) {
@@ -337,17 +354,27 @@ export const gameService = {
     }
   },
 
-  submitVotes: async (roomId: string, roundNumber: number, votes: Vote[]) => {},
+  submitVotes: async (roomId: string, roundNumber: number, votes: Vote[]) => { },
 
-  // !!! DÜZELTİLEN KISIM BURASI !!!
-  subscribeToRoom: (roomId: string, onUpdate: (payload: any) => void) => {
-      const channel = supabase.channel(`room:${roomId}`)
-        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` }, (payload) => onUpdate({ type: 'ROOM_UPDATE', data: payload.new }))
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'players', filter: `room_id=eq.${roomId}` }, () => onUpdate({ type: 'PLAYER_UPDATE' }))
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'votes', filter: `room_id=eq.${roomId}` }, (payload) => onUpdate({ type: 'VOTES_UPDATE', payload: payload }))
-        // YENİ EKLENEN SATIR: Cevapları da canlı dinle!
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'answers', filter: `room_id=eq.${roomId}` }, (payload) => onUpdate({ type: 'ANSWERS_UPDATE', payload: payload }))
-        .subscribe();
-      return () => { supabase.removeChannel(channel); };
+  // Realtime subscription with connection status tracking
+  subscribeToRoom: (roomId: string, onUpdate: (payload: any) => void, onConnectionChange?: (status: 'connected' | 'disconnected' | 'reconnecting') => void) => {
+    const channel = supabase.channel(`room:${roomId}`)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `id=eq.${roomId}` }, (payload) => onUpdate({ type: 'ROOM_UPDATE', data: payload.new }))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'players', filter: `room_id=eq.${roomId}` }, () => onUpdate({ type: 'PLAYER_UPDATE' }))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'votes', filter: `room_id=eq.${roomId}` }, (payload) => onUpdate({ type: 'VOTES_UPDATE', payload: payload }))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'answers', filter: `room_id=eq.${roomId}` }, (payload) => onUpdate({ type: 'ANSWERS_UPDATE', payload: payload }))
+      .subscribe((status) => {
+        if (onConnectionChange) {
+          if (status === 'SUBSCRIBED') {
+            onConnectionChange('connected');
+          } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+            onConnectionChange('disconnected');
+          } else if (status === 'TIMED_OUT') {
+            onConnectionChange('reconnecting');
+          }
+        }
+      });
+
+    return () => { supabase.removeChannel(channel); };
   }
 };

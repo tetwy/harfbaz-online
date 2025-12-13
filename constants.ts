@@ -17,7 +17,8 @@ export const CATEGORIES = [
 export const ALPHABET = "ABCÇDEFGHIİJKLMNOÖPRSŞTUÜVYZ";
 
 export const AVATARS = [
-  "🐶", "🐱", "🐭", "🐹", "🐰", "🦊", "🐻", "🐼", "🐨", "🐯", "🦁", "🐮"
+  "🐶", "🐱", "🐭", "🐹", "🐰", "🦊", "🐻", "🐼", "🐨", "🐯", "🦁", "🐮",
+  "🐬", "🐵", "🦄", "🐸"
 ];
 
 export const DEFAULT_SETTINGS = {
