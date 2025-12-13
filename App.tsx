@@ -7,11 +7,39 @@ import { GameStatus, Player, Room, RoundAnswers, Vote, RoomSettings } from './ty
 import { gameService } from './services/gameService';
 import { CATEGORIES } from './constants';
 
-// Lazy load heavy game phase components
-const WaitingRoom = lazy(() => import('./components/WaitingRoom'));
-const GamePhase = lazy(() => import('./components/GamePhase'));
-const VotingPhase = lazy(() => import('./components/VotingPhase'));
-const Scoreboard = lazy(() => import('./components/Scoreboard'));
+// Lazy load with retry for Safari/mobile reliability
+const lazyWithRetry = (importFn: () => Promise<any>, retries = 3): React.LazyExoticComponent<any> => {
+  return lazy(async () => {
+    for (let i = 0; i < retries; i++) {
+      try {
+        return await importFn();
+      } catch (error) {
+        if (i === retries - 1) throw error;
+        // Wait before retry (exponential backoff)
+        await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
+      }
+    }
+    return importFn();
+  });
+};
+
+// Lazy load heavy game phase components with retry
+const WaitingRoom = lazyWithRetry(() => import('./components/WaitingRoom'));
+const GamePhase = lazyWithRetry(() => import('./components/GamePhase'));
+const VotingPhase = lazyWithRetry(() => import('./components/VotingPhase'));
+const Scoreboard = lazyWithRetry(() => import('./components/Scoreboard'));
+
+// Preload components after initial render
+if (typeof window !== 'undefined') {
+  window.addEventListener('load', () => {
+    setTimeout(() => {
+      import('./components/WaitingRoom');
+      import('./components/GamePhase');
+      import('./components/VotingPhase');
+      import('./components/Scoreboard');
+    }, 2000);
+  });
+}
 
 // Debounce utility
 const debounce = <T extends (...args: any[]) => any>(fn: T, delay: number) => {
