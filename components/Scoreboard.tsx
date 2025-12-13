@@ -73,7 +73,7 @@ const Scoreboard: React.FC<ScoreboardProps> = ({ players, onNextRound, isGameOve
       </div>
 
       {/* Main Content - Scrollable */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 pb-4">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 pt-8 pb-4">
         <motion.div
           className="max-w-md w-full relative z-10 mx-auto"
           initial={{ opacity: 0, y: 30 }}
@@ -207,9 +207,9 @@ const Scoreboard: React.FC<ScoreboardProps> = ({ players, onNextRound, isGameOve
             </motion.div>
           )}
 
-          {/* Score List - Scrollable */}
+          {/* Score List */}
           <motion.div
-            className="space-y-3 max-h-[40vh] overflow-y-auto pr-1"
+            className="space-y-3"
             initial="hidden"
             animate="visible"
             variants={{ visible: { transition: { staggerChildren: 0.1, delayChildren: isGameOver ? 1.2 : 0.2 } } }}
