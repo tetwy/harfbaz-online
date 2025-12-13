@@ -27,7 +27,7 @@ const Scoreboard: React.FC<ScoreboardProps> = ({ players, onNextRound, isGameOve
     []);
 
   return (
-    <div className="h-screen w-screen fixed inset-0 bg-[#0a0a1a] overflow-hidden flex flex-col">
+    <div className="h-screen w-screen fixed inset-0 bg-[#0a0a1a] flex flex-col">
 
       {/* Background Effects */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -72,10 +72,10 @@ const Scoreboard: React.FC<ScoreboardProps> = ({ players, onNextRound, isGameOve
         )}
       </div>
 
-      {/* Main Content */}
-      <div className="flex-1 flex items-center justify-center p-4 pb-24">
+      {/* Main Content - Scrollable */}
+      <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 pb-4">
         <motion.div
-          className="max-w-md w-full relative z-10"
+          className="max-w-md w-full relative z-10 mx-auto"
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
         >
@@ -207,9 +207,9 @@ const Scoreboard: React.FC<ScoreboardProps> = ({ players, onNextRound, isGameOve
             </motion.div>
           )}
 
-          {/* Score List */}
+          {/* Score List - Scrollable */}
           <motion.div
-            className="space-y-3"
+            className="space-y-3 max-h-[40vh] overflow-y-auto pr-1"
             initial="hidden"
             animate="visible"
             variants={{ visible: { transition: { staggerChildren: 0.1, delayChildren: isGameOver ? 1.2 : 0.2 } } }}
@@ -256,9 +256,9 @@ const Scoreboard: React.FC<ScoreboardProps> = ({ players, onNextRound, isGameOve
         </motion.div>
       </div>
 
-      {/* Footer Actions */}
+      {/* Footer Actions - Fixed at bottom */}
       <motion.div
-        className="relative z-10 p-4 md:p-6 bg-gradient-to-t from-[#0a0a1a] to-transparent"
+        className="relative z-10 p-4 md:p-6 bg-gradient-to-t from-[#0a0a1a] via-[#0a0a1a] to-transparent flex-shrink-0"
         initial={{ y: 50, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ delay: isGameOver ? 1.5 : 0.5 }}
