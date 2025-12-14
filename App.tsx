@@ -191,6 +191,11 @@ const App: React.FC = () => {
             }
             setRoundAnswers({});
             setCurrentVotes([]);
+            // Oyuncu puanlarını yeniden yükle (score reset sonrası)
+            // Kısa gecikme - veritabanı işleminin tamamlanmasını bekle
+            setTimeout(() => {
+              refreshPlayers();
+            }, 500);
           }
 
           if (uiStatus === GameStatus.VOTING) {
@@ -201,7 +206,7 @@ const App: React.FC = () => {
             }
             // Önce temizle, sonra doğru turun cevaplarını al
             setRoundAnswers({});
-            const answers = await gameService.getRoundAnswers(activeRoomId, newRoomData.current_round);
+            const answers = await gameService.getRoundAnswers(activeRoomId, newRoomData.current_round, newRoomData.current_game_id);
             setRoundAnswers(answers);
             refreshVotes(newRoomData.current_round);
           }
@@ -215,6 +220,7 @@ const App: React.FC = () => {
           status: newRoomData.status,
           currentLetter: newRoomData.current_letter,
           currentRound: newRoomData.current_round,
+          currentGameId: newRoomData.current_game_id, // Yeni: Game ID
           settings: newRoomData.settings,
           votingCategoryIndex: newRoomData.voting_category_index,
           revealedPlayers: newRoomData.revealed_players,
@@ -322,6 +328,9 @@ const App: React.FC = () => {
     setLoading(true);
     try {
       await gameService.startGame(activeRoomId);
+      // Oyun başladıktan sonra oyuncu puanlarını güncelle
+      const freshPlayers = await gameService.getPlayers(activeRoomId);
+      setRoom((prev) => prev ? { ...prev, players: freshPlayers } : null);
     } finally {
       setLoading(false);
     }
@@ -341,7 +350,7 @@ const App: React.FC = () => {
     }
     submittedRoundsRef.current.add(currentRoundNumber);
 
-    await gameService.submitAnswers(activeRoomId, me.id, currentRoundNumber, myAnswers);
+    await gameService.submitAnswers(activeRoomId, me.id, currentRoundNumber, myAnswers, room.currentGameId);
 
     if (me.isHost) {
 
@@ -354,9 +363,9 @@ const App: React.FC = () => {
         // Her kontrol için fresh data al
         const { data: freshRoom } = await supabase
           .from('rooms')
-          .select('current_round, round_start_time, status')
+          .select('current_round, round_start_time, status, current_game_id')
           .eq('id', activeRoomId)
-          .single();
+          .maybeSingle();
 
         // Eğer tur değiştiyse veya status değiştiyse, interval'i durdur
         if (!freshRoom || freshRoom.current_round !== currentRoundNumber || freshRoom.status !== 'PLAYING') {
@@ -370,7 +379,8 @@ const App: React.FC = () => {
         const allSubmitted = await gameService.checkAllAnswersSubmitted(
           activeRoomId,
           currentRoundNumber,
-          playerCount
+          playerCount,
+          freshRoom.current_game_id
         );
 
         const startTime = freshRoom.round_start_time ? new Date(freshRoom.round_start_time).getTime() : Date.now();
@@ -415,6 +425,9 @@ const App: React.FC = () => {
         } else {
           await gameService.calculateScores(activeRoomId, room.currentRound, room.players);
           processedRoundsRef.current.add(room.currentRound);
+          // Puan hesaplamasından sonra oyuncuları hemen güncelle
+          const freshPlayers = await gameService.getPlayers(activeRoomId);
+          setRoom((prev) => prev ? { ...prev, players: freshPlayers } : null);
         }
 
         if (room.currentRound < room.settings.totalRounds) {
@@ -500,6 +513,8 @@ const App: React.FC = () => {
             roundDuration={room.settings.roundDuration}
             roomId={activeRoomId}
             playerId={me.id}
+            gameId={room.currentGameId}
+            roundNumber={room.currentRound}
             onTimeUp={handleRoundTimeUp}
             onLeave={handleLeaveRoom}
             categories={room.settings.categories}

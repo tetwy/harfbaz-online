@@ -29,6 +29,7 @@ export interface Room {
   code: string;
   currentRound: number;
   currentLetter: string;
+  currentGameId: string; // Yeni: Oyun oturumu ID'si
   status: GameStatus;
   players: Player[];
   settings: RoomSettings;

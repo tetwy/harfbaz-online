@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Timer, User, MapPin, Cat, Flower2, Package, Star, Globe, Briefcase, Utensils, Clapperboard, LogOut, Check } from 'lucide-react';
+import { Timer, User, MapPin, Cat, Flower2, Package, Star, Globe, Briefcase, Utensils, Clapperboard, LogOut, Check, Send } from 'lucide-react';
+import { Button } from './UI';
 import { CATEGORIES } from '../constants';
 
 interface GamePhaseProps {
@@ -8,6 +9,8 @@ interface GamePhaseProps {
   roundDuration: number;
   roomId: string;
   playerId: string;
+  gameId: string; // Yeni: Oyun oturumu ID'si
+  roundNumber: number; // Yeni: Mevcut tur numarası
   onTimeUp: (answers: Record<string, string>) => void;
   onLeave: () => void;
   categories: string[];
@@ -31,7 +34,7 @@ const getCategoryIcon = (category: string) => {
 };
 
 const GamePhase: React.FC<GamePhaseProps> = ({
-  letter, roundDuration, roomId, playerId, onTimeUp, onLeave, categories, roundStartTime
+  letter, roundDuration, roomId, playerId, gameId, roundNumber, onTimeUp, onLeave, categories, roundStartTime
 }) => {
 
   const calculateInitialTime = () => {
@@ -67,10 +70,16 @@ const GamePhase: React.FC<GamePhaseProps> = ({
 
     return () => {
       clearTimeout(timeout);
-      // Don't auto-submit on unmount - only timer expiration should trigger submit
-      // This prevents issues when transitioning between rounds/phases
     };
   }, []);
+
+  // Yeni oyun veya tur başladığında state'i sıfırla
+  useEffect(() => {
+    setAnswers({});
+    setSubmitted(false);
+    submittedRef.current = false;
+    setTimeLeft(calculateInitialTime());
+  }, [gameId, roundNumber]);
 
   useEffect(() => {
     const initialTime = calculateInitialTime();
@@ -212,6 +221,24 @@ const GamePhase: React.FC<GamePhaseProps> = ({
               ))}
             </div>
           </div>
+
+          {/* Submit Button - Erken gönderim için */}
+          {!submitted && (
+            <div className="mt-4">
+              <Button
+                onClick={() => {
+                  if (!submittedRef.current) {
+                    handleFinish();
+                  }
+                }}
+                disabled={submitted}
+                className="w-full py-3 text-base font-bold"
+                icon={<Send size={18} />}
+              >
+                Gönder ({Object.keys(answers).filter(k => answers[k]).length}/{displayCategories.length})
+              </Button>
+            </div>
+          )}
 
           {/* Toast notification - Cevaplar gönderildi */}
           <AnimatePresence>

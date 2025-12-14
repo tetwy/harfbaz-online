@@ -92,7 +92,7 @@ const WaitingRoom: React.FC<WaitingRoomProps> = ({ room, currentPlayer, onStart,
       {/* Leave Button */}
       <motion.button
         onClick={onLeave}
-        className="fixed top-6 right-6 z-50 flex items-center gap-2 text-slate-500 hover:text-red-400 transition-all text-sm font-medium px-4 py-2 rounded-xl bg-white/5 hover:bg-red-500/10 border border-white/5"
+        className="fixed top-4 right-4 z-50 flex items-center gap-2 text-slate-500 hover:text-red-400 transition-all text-sm font-medium px-4 py-2 rounded-xl bg-white/5 hover:bg-red-500/10 border border-white/5 safe-top safe-right"
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
       >

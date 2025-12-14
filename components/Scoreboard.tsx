@@ -258,7 +258,7 @@ const Scoreboard: React.FC<ScoreboardProps> = ({ players, onNextRound, isGameOve
 
       {/* Footer Actions - Fixed at bottom */}
       <motion.div
-        className="relative z-10 p-4 md:p-6 bg-gradient-to-t from-[#0a0a1a] via-[#0a0a1a] to-transparent flex-shrink-0 safe-bottom"
+        className="relative z-10 p-4 pb-8 md:p-6 bg-gradient-to-t from-[#0a0a1a] via-[#0a0a1a] to-transparent flex-shrink-0 safe-bottom"
         initial={{ y: 50, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ delay: isGameOver ? 1.5 : 0.5 }}

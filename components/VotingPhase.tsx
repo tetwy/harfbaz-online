@@ -256,7 +256,7 @@ const VotingPhase: React.FC<VotingPhaseProps> = ({
 
       {/* Footer - Next Button */}
       {isHost && (
-        <div className="relative z-10 p-4 md:p-6 bg-gradient-to-t from-[#0a0a1a] to-transparent">
+        <div className="relative z-10 p-4 pb-8 md:p-6 bg-gradient-to-t from-[#0a0a1a] to-transparent safe-bottom">
           <div className="max-w-2xl mx-auto">
             <Button
               onClick={onNextCategory}
@@ -272,7 +272,7 @@ const VotingPhase: React.FC<VotingPhaseProps> = ({
 
       {/* Non-host waiting */}
       {!isHost && (
-        <div className="relative z-10 p-4 md:p-6 bg-gradient-to-t from-[#0a0a1a] to-transparent">
+        <div className="relative z-10 p-4 pb-8 md:p-6 bg-gradient-to-t from-[#0a0a1a] to-transparent safe-bottom">
           <div className="max-w-2xl mx-auto">
             <motion.div
               className="text-center p-4 rounded-xl bg-white/5 border border-white/5"
