@@ -178,25 +178,19 @@ export const gameService = {
   },
 
   startGame: async (roomId: string) => {
-    console.log('🚀 startGame çağrıldı, roomId:', roomId);
-
     const letter = getUniqueRandomLetter([]);
     const now = new Date().toISOString();
 
     // Önceki oyunun verilerini temizle
-    console.log('🗑️ Eski cevapları siliniyor...');
     const { error: answersError } = await supabase.from('answers').delete().eq('room_id', roomId);
-    if (answersError) console.error('❌ Cevap silme hatası:', answersError);
-    else console.log('✅ Cevaplar silindi');
+    if (answersError) console.error('Cevap silme hatası:', answersError);
 
     const { error: votesError } = await supabase.from('votes').delete().eq('room_id', roomId);
-    if (votesError) console.error('❌ Oy silme hatası:', votesError);
-    else console.log('✅ Oylar silindi');
+    if (votesError) console.error('Oy silme hatası:', votesError);
 
     // Oyuncu puanlarını sıfırla
     const { error: scoresError } = await supabase.from('players').update({ score: 0 }).eq('room_id', roomId);
-    if (scoresError) console.error('❌ Puan sıfırlama hatası:', scoresError);
-    else console.log('✅ Puanlar sıfırlandı');
+    if (scoresError) console.error('Puan sıfırlama hatası:', scoresError);
 
     await supabase.from('rooms').update({
       status: 'PLAYING',
@@ -208,8 +202,6 @@ export const gameService = {
       round_start_time: now,
       last_scored_round: 0
     }).eq('id', roomId);
-
-    console.log('✅ Oyun başladı, harf:', letter);
   },
 
   nextRound: async (roomId: string, currentRound: number, totalRounds: number) => {

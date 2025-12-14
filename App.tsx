@@ -337,18 +337,13 @@ const App: React.FC = () => {
 
     // Bu turda zaten cevap gönderdik mi kontrolü
     if (submittedRoundsRef.current.has(currentRoundNumber)) {
-      console.log('⚠️ Bu turda zaten cevap gönderildi, atlanıyor:', currentRoundNumber);
       return;
     }
     submittedRoundsRef.current.add(currentRoundNumber);
 
-    console.log('📤 handleRoundTimeUp çağrıldı:', { player: me.name, round: currentRoundNumber, isHost: me.isHost });
-
     await gameService.submitAnswers(activeRoomId, me.id, currentRoundNumber, myAnswers);
-    console.log('✅ Cevaplar gönderildi');
 
     if (me.isHost) {
-      console.log('👑 Host interval başlatıyor...');
 
       // Önceki interval'i temizle (memory leak önleme)
       if (checkIntervalRef.current) {
@@ -365,7 +360,6 @@ const App: React.FC = () => {
 
         // Eğer tur değiştiyse veya status değiştiyse, interval'i durdur
         if (!freshRoom || freshRoom.current_round !== currentRoundNumber || freshRoom.status !== 'PLAYING') {
-          console.log('🛑 Interval durduruluyor (tur/status değişti):', freshRoom);
           if (checkIntervalRef.current) {
             clearInterval(checkIntervalRef.current);
             checkIntervalRef.current = null;
@@ -385,10 +379,7 @@ const App: React.FC = () => {
         const now = Date.now();
         const isTimeExpired = now > (startTime + durationMs + bufferMs);
 
-        console.log('🔍 Interval kontrol:', { allSubmitted, isTimeExpired, round: currentRoundNumber, playerCount });
-
         if (allSubmitted || isTimeExpired) {
-          console.log('🎯 VOTING\'e geçiliyor!', { allSubmitted, isTimeExpired });
           if (checkIntervalRef.current) {
             clearInterval(checkIntervalRef.current);
             checkIntervalRef.current = null;

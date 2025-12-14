@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Timer, Send, User, MapPin, Cat, Flower2, Package, Star, Globe, Briefcase, Utensils, Clapperboard, LogOut } from 'lucide-react';
-import { Button } from './UI';
+import { Timer, User, MapPin, Cat, Flower2, Package, Star, Globe, Briefcase, Utensils, Clapperboard, LogOut, Check } from 'lucide-react';
 import { CATEGORIES } from '../constants';
 
 interface GamePhaseProps {
@@ -75,7 +74,6 @@ const GamePhase: React.FC<GamePhaseProps> = ({
 
   useEffect(() => {
     const initialTime = calculateInitialTime();
-    console.log('⏱️ GamePhase Timer başlatılıyor:', { initialTime, roundStartTime, roundDuration });
 
     // Timer interval'ı her zaman başlat
     const timer = setInterval(() => {
@@ -86,7 +84,6 @@ const GamePhase: React.FC<GamePhaseProps> = ({
         clearInterval(timer);
         // Sadece timer doğal olarak 0'a düştüğünde submit et
         if (!submittedRef.current) {
-          console.log('⏱️ Süre doldu, otomatik submit');
           handleFinish();
         }
       }
@@ -100,11 +97,7 @@ const GamePhase: React.FC<GamePhaseProps> = ({
   };
 
   const handleFinish = () => {
-    console.log('🟡 handleFinish çağrıldı!', new Error().stack);
-    if (submittedRef.current) {
-      console.log('⚠️ Zaten gönderildi, atlanıyor');
-      return;
-    }
+    if (submittedRef.current) return;
     setSubmitted(true);
     submittedRef.current = true;
     onTimeUp(answersRef.current);
@@ -220,31 +213,22 @@ const GamePhase: React.FC<GamePhaseProps> = ({
             </div>
           </div>
 
-          {/* Submit - AnimatePresence removed for debugging */}
-          <div className="mt-6">
-            {!submitted ? (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  console.log('🔵 Button onClick tetiklendi!');
-                  if (!submittedRef.current) {
-                    handleFinish();
-                  }
-                }}
-                disabled={submitted || submittedRef.current}
-                className="w-full py-4 text-base font-bold bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-2xl hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-purple-500/30 border border-purple-400/20"
+          {/* Toast notification - Cevaplar gönderildi */}
+          <AnimatePresence>
+            {submitted && (
+              <motion.div
+                initial={{ opacity: 0, y: -50 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -50 }}
+                className="fixed top-16 left-0 right-0 z-[100] flex justify-center p-2"
               >
-                <Send size={18} />
-                Gönder ({Object.keys(answers).filter(k => answers[k]).length}/{displayCategories.length})
-              </button>
-            ) : (
-              <div className="text-center py-4 rounded-2xl bg-green-500/10 border border-green-500/30">
-                <p className="text-green-400 font-bold">✓ Cevaplar gönderildi!</p>
-              </div>
+                <div className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium shadow-lg bg-green-500/90 text-white">
+                  <Check size={16} />
+                  <span>Cevaplar gönderildi!</span>
+                </div>
+              </motion.div>
             )}
-          </div>
+          </AnimatePresence>
         </div>
       </div>
     </div>
