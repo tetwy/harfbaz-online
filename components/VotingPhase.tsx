@@ -254,14 +254,17 @@ const VotingPhase: React.FC<VotingPhaseProps> = ({
         </div>
       </div>
 
-      {/* Footer - Next Button */}
+      {/* Spacer for fixed footer */}
+      <div className="h-24" />
+
+      {/* Footer - Next Button (Fixed) */}
       {isHost && (
-        <div className="relative z-10 p-4 pb-8 md:p-6 bg-gradient-to-t from-[#0a0a1a] to-transparent safe-bottom">
-          <div className="max-w-2xl mx-auto">
+        <div className="fixed bottom-0 left-0 right-0 p-4 pt-8 bg-gradient-to-t from-[#0f0c29] via-[#0f0c29] to-transparent z-50 pb-safe">
+          <div className="max-w-md mx-auto">
             <Button
               onClick={onNextCategory}
               disabled={isLoading}
-              className="w-full py-4 text-lg font-bold"
+              className="w-full py-3.5 text-lg font-bold shadow-lg shadow-blue-500/20"
               icon={isLoading ? <Loader2 className="animate-spin" size={20} /> : <ArrowRight size={20} />}
             >
               {isLoading ? 'Yükleniyor...' : isLastCategory ? 'Sonuçları Göster' : 'Sonraki Kategori'}
@@ -270,16 +273,16 @@ const VotingPhase: React.FC<VotingPhaseProps> = ({
         </div>
       )}
 
-      {/* Non-host waiting */}
+      {/* Non-host waiting (Fixed) */}
       {!isHost && (
-        <div className="relative z-10 p-4 pb-8 md:p-6 bg-gradient-to-t from-[#0a0a1a] to-transparent safe-bottom">
-          <div className="max-w-2xl mx-auto">
+        <div className="fixed bottom-0 left-0 right-0 p-4 pt-8 bg-gradient-to-t from-[#0f0c29] via-[#0f0c29] to-transparent z-50 pb-safe">
+          <div className="max-w-md mx-auto">
             <motion.div
-              className="text-center p-4 rounded-xl bg-white/5 border border-white/5"
+              className="text-center p-3 rounded-xl bg-white/5 border border-white/5"
               animate={{ opacity: [0.5, 1, 0.5] }}
               transition={{ duration: 2, repeat: Infinity }}
             >
-              <p className="text-slate-400 text-sm">Yönetici devam ettirmeyi bekleniyor...</p>
+              <p className="text-slate-400 font-medium">Host'un devam etmesi bekleniyor...</p>
             </motion.div>
           </div>
         </div>

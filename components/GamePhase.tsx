@@ -223,21 +223,29 @@ const GamePhase: React.FC<GamePhaseProps> = ({
           </div>
 
           {/* Submit Button - Erken gönderim için */}
+          {/* Submit Button - Erken gönderim için - Fixed Bottom */}
           {!submitted && (
-            <div className="mt-4">
-              <Button
-                onClick={() => {
-                  if (!submittedRef.current) {
-                    handleFinish();
-                  }
-                }}
-                disabled={submitted}
-                className="w-full py-3 text-base font-bold"
-                icon={<Send size={18} />}
-              >
-                Gönder ({Object.keys(answers).filter(k => answers[k]).length}/{displayCategories.length})
-              </Button>
-            </div>
+            <>
+              {/* Spacer div to prevent content hidden behind fixed button */}
+              <div className="h-24 md:h-20" />
+
+              <div className="fixed bottom-0 left-0 right-0 p-4 pt-8 bg-gradient-to-t from-[#0f0c29] via-[#0f0c29] to-transparent z-50 pb-safe">
+                <div className="max-w-md mx-auto">
+                  <Button
+                    onClick={() => {
+                      if (!submittedRef.current) {
+                        handleFinish();
+                      }
+                    }}
+                    disabled={submitted}
+                    className="w-full py-3.5 text-base font-bold shadow-lg shadow-purple-500/20 active:scale-[0.98] transition-all"
+                    icon={<Send size={20} />}
+                  >
+                    Cevapları Gönder ({Object.keys(answers).filter(k => answers[k]).length}/{displayCategories.length})
+                  </Button>
+                </div>
+              </div>
+            </>
           )}
 
           {/* Toast notification - Cevaplar gönderildi */}

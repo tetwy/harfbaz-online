@@ -40,4 +40,10 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
     persistSession: true,
     detectSessionInUrl: true,
   },
+  realtime: {
+    params: {
+      eventsPerSecond: 10,
+    },
+    heartbeatIntervalMs: 5000, // Bağlantıyı daha sık kontrol et (default 30000)
+  },
 });
