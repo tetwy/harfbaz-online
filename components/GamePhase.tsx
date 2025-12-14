@@ -220,43 +220,30 @@ const GamePhase: React.FC<GamePhaseProps> = ({
             </div>
           </div>
 
-          {/* Submit */}
+          {/* Submit - AnimatePresence removed for debugging */}
           <div className="mt-6">
-            <AnimatePresence mode="wait">
-              {!submitted ? (
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0 }}
-                >
-                  {/* Plain HTML button to test without Framer Motion */}
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      console.log('🔵 Button onClick tetiklendi!');
-                      if (!submittedRef.current) {
-                        handleFinish();
-                      }
-                    }}
-                    disabled={submitted || submittedRef.current}
-                    className="w-full py-3 text-base font-bold bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-xl hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
-                  >
-                    <Send size={18} />
-                    Gönder ({Object.keys(answers).filter(k => answers[k]).length}/{displayCategories.length})
-                  </button>
-                </motion.div>
-              ) : (
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="text-center py-3 rounded-xl bg-green-500/10 border border-green-500/30"
-                >
-                  <p className="text-green-400 font-bold">✓ Cevaplar gönderildi!</p>
-                </motion.div>
-              )}
-            </AnimatePresence>
+            {!submitted ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  console.log('🔵 Button onClick tetiklendi!');
+                  if (!submittedRef.current) {
+                    handleFinish();
+                  }
+                }}
+                disabled={submitted || submittedRef.current}
+                className="w-full py-4 text-base font-bold bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-2xl hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-purple-500/30 border border-purple-400/20"
+              >
+                <Send size={18} />
+                Gönder ({Object.keys(answers).filter(k => answers[k]).length}/{displayCategories.length})
+              </button>
+            ) : (
+              <div className="text-center py-4 rounded-2xl bg-green-500/10 border border-green-500/30">
+                <p className="text-green-400 font-bold">✓ Cevaplar gönderildi!</p>
+              </div>
+            )}
           </div>
         </div>
       </div>
