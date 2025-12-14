@@ -57,6 +57,9 @@ const GamePhase: React.FC<GamePhaseProps> = ({
   // Track if component was mounted properly (for HMR detection)
   const mountedRef = useRef(false);
 
+  // Track if timer has been initialized for current round
+  const timerInitializedRef = useRef<string | null>(null);
+
   useEffect(() => {
     // Mark as mounted after a short delay to detect HMR
     const timeout = setTimeout(() => {
@@ -65,28 +68,27 @@ const GamePhase: React.FC<GamePhaseProps> = ({
 
     return () => {
       clearTimeout(timeout);
-      // Only submit if properly mounted, not already submitted, AND time has expired
-      // Don't auto-submit when transitioning phases (when another user submits)
-      const timeExpired = calculateInitialTime() <= 0;
-      if (mountedRef.current && !submittedRef.current && timeExpired) {
-        onTimeUp(answersRef.current);
-      }
+      // Don't auto-submit on unmount - only timer expiration should trigger submit
+      // This prevents issues when transitioning between rounds/phases
     };
   }, []);
 
   useEffect(() => {
-    if (calculateInitialTime() <= 0) {
-      if (!submittedRef.current) handleFinish();
-      return;
-    }
+    const initialTime = calculateInitialTime();
+    console.log('⏱️ GamePhase Timer başlatılıyor:', { initialTime, roundStartTime, roundDuration });
 
+    // Timer interval'ı her zaman başlat
     const timer = setInterval(() => {
       const realRemainingTime = calculateInitialTime();
       setTimeLeft(realRemainingTime);
 
       if (realRemainingTime <= 0) {
         clearInterval(timer);
-        if (!submittedRef.current) handleFinish();
+        // Sadece timer doğal olarak 0'a düştüğünde submit et
+        if (!submittedRef.current) {
+          console.log('⏱️ Süre doldu, otomatik submit');
+          handleFinish();
+        }
       }
     }, 1000);
 
@@ -98,7 +100,11 @@ const GamePhase: React.FC<GamePhaseProps> = ({
   };
 
   const handleFinish = () => {
-    if (submittedRef.current) return;
+    console.log('🟡 handleFinish çağrıldı!', new Error().stack);
+    if (submittedRef.current) {
+      console.log('⚠️ Zaten gönderildi, atlanıyor');
+      return;
+    }
     setSubmitted(true);
     submittedRef.current = true;
     onTimeUp(answersRef.current);
@@ -128,7 +134,7 @@ const GamePhase: React.FC<GamePhaseProps> = ({
       {/* Leave Button */}
       <motion.button
         onClick={onLeave}
-        className="fixed top-4 right-4 z-50 flex items-center gap-1.5 text-slate-500 hover:text-red-400 transition-all text-sm px-3 py-2 rounded-xl bg-white/5 hover:bg-red-500/10"
+        className="fixed top-4 right-4 z-50 flex items-center gap-1.5 text-slate-500 hover:text-red-400 transition-all text-sm px-3 py-2 rounded-xl bg-white/5 hover:bg-red-500/10 safe-top safe-right"
         whileTap={{ scale: 0.95 }}
       >
         <LogOut size={16} /> Çık
@@ -205,6 +211,7 @@ const GamePhase: React.FC<GamePhaseProps> = ({
                     placeholder={`${category} yaz...`}
                     value={answers[category] || ''}
                     onChange={(e) => handleInputChange(category, e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
                     disabled={submitted}
                     className="w-full bg-white/5 rounded-lg px-3 py-2.5 text-white placeholder-slate-600 outline-none text-sm font-medium border border-white/5 focus:border-purple-500/50"
                   />
@@ -222,13 +229,23 @@ const GamePhase: React.FC<GamePhaseProps> = ({
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0 }}
                 >
-                  <Button
-                    onClick={handleFinish}
-                    className="w-full py-3 text-base font-bold"
-                    icon={<Send size={18} />}
+                  {/* Plain HTML button to test without Framer Motion */}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      console.log('🔵 Button onClick tetiklendi!');
+                      if (!submittedRef.current) {
+                        handleFinish();
+                      }
+                    }}
+                    disabled={submitted || submittedRef.current}
+                    className="w-full py-3 text-base font-bold bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-xl hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
                   >
+                    <Send size={18} />
                     Gönder ({Object.keys(answers).filter(k => answers[k]).length}/{displayCategories.length})
-                  </Button>
+                  </button>
                 </motion.div>
               ) : (
                 <motion.div

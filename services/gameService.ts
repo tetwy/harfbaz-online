@@ -178,8 +178,25 @@ export const gameService = {
   },
 
   startGame: async (roomId: string) => {
+    console.log('🚀 startGame çağrıldı, roomId:', roomId);
+
     const letter = getUniqueRandomLetter([]);
     const now = new Date().toISOString();
+
+    // Önceki oyunun verilerini temizle
+    console.log('🗑️ Eski cevapları siliniyor...');
+    const { error: answersError } = await supabase.from('answers').delete().eq('room_id', roomId);
+    if (answersError) console.error('❌ Cevap silme hatası:', answersError);
+    else console.log('✅ Cevaplar silindi');
+
+    const { error: votesError } = await supabase.from('votes').delete().eq('room_id', roomId);
+    if (votesError) console.error('❌ Oy silme hatası:', votesError);
+    else console.log('✅ Oylar silindi');
+
+    // Oyuncu puanlarını sıfırla
+    const { error: scoresError } = await supabase.from('players').update({ score: 0 }).eq('room_id', roomId);
+    if (scoresError) console.error('❌ Puan sıfırlama hatası:', scoresError);
+    else console.log('✅ Puanlar sıfırlandı');
 
     await supabase.from('rooms').update({
       status: 'PLAYING',
@@ -188,8 +205,11 @@ export const gameService = {
       voting_category_index: 0,
       used_letters: [letter],
       revealed_players: [],
-      round_start_time: now
+      round_start_time: now,
+      last_scored_round: 0
     }).eq('id', roomId);
+
+    console.log('✅ Oyun başladı, harf:', letter);
   },
 
   nextRound: async (roomId: string, currentRound: number, totalRounds: number) => {
@@ -342,6 +362,30 @@ export const gameService = {
     // Hesaplama işlemini tarayıcıdan kaldırdık. 
     // Artık işlemi veritabanındaki "calculate_round_scores" fonksiyonu yapıyor.
     // Bu sayede hile yapılamaz.
+
+    // Tüm cevapların kaydedildiğinden emin ol (race condition önleme)
+    const playerCount = players.length;
+    let retries = 5;
+
+    while (retries > 0) {
+      const { count } = await supabase
+        .from('answers')
+        .select('*', { count: 'exact', head: true })
+        .eq('room_id', roomId)
+        .eq('round_number', roundNumber);
+
+      if ((count || 0) >= playerCount) {
+        break; // Tüm cevaplar kaydedildi
+      }
+
+      retries--;
+      if (retries > 0) {
+        await new Promise(r => setTimeout(r, 500)); // 500ms bekle
+      }
+    }
+
+    // Ekstra güvenlik için küçük bir bekleme
+    await new Promise(r => setTimeout(r, 300));
 
     const { error } = await supabase.rpc('calculate_round_scores', {
       p_room_id: roomId,

@@ -55,7 +55,7 @@ const VotingPhase: React.FC<VotingPhaseProps> = ({
   };
 
   return (
-    <div className="h-screen w-screen fixed inset-0 bg-[#0a0a1a] overflow-hidden flex flex-col">
+    <div className="h-screen w-screen fixed inset-0 bg-[#0a0a1a] overflow-hidden flex flex-col safe-bottom">
 
       {/* Background */}
       <div className="absolute inset-0">
@@ -69,7 +69,7 @@ const VotingPhase: React.FC<VotingPhaseProps> = ({
       {/* Leave Button */}
       <motion.button
         onClick={onLeave}
-        className="fixed top-4 right-4 z-50 flex items-center gap-2 text-slate-500 hover:text-red-400 transition-all text-sm px-3 py-2 rounded-xl bg-white/5 hover:bg-red-500/10"
+        className="fixed top-4 right-4 z-50 flex items-center gap-2 text-slate-500 hover:text-red-400 transition-all text-sm px-3 py-2 rounded-xl bg-white/5 hover:bg-red-500/10 safe-top safe-right"
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
       >

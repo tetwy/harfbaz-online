@@ -2,7 +2,7 @@
 <html lang="tr" class="dark">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Harfbaz - Kelime Yarışı</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -70,6 +70,23 @@
       }
       ::-webkit-scrollbar-thumb:hover {
         background: #64748b;
+      }
+      /* iOS Safe Areas */
+      html, body {
+        min-height: 100%;
+        min-height: -webkit-fill-available;
+      }
+      .safe-bottom {
+        padding-bottom: env(safe-area-inset-bottom, 0px);
+      }
+      .safe-top {
+        padding-top: env(safe-area-inset-top, 0px);
+      }
+      .safe-left {
+        padding-left: env(safe-area-inset-left, 0px);
+      }
+      .safe-right {
+        padding-right: env(safe-area-inset-right, 0px);
       }
     </style>
   <script type="importmap">

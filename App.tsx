@@ -5,6 +5,7 @@ import ConnectionStatus from './components/ConnectionStatus';
 import LoadingScreen from './components/LoadingScreen';
 import { GameStatus, Player, Room, RoundAnswers, Vote, RoomSettings } from './types';
 import { gameService } from './services/gameService';
+import { supabase } from './services/supabase';
 import { CATEGORIES } from './constants';
 
 // Lazy load with retry for Safari/mobile reliability
@@ -61,6 +62,7 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const processingRef = useRef(false);
   const processedRoundsRef = useRef<Set<number>>(new Set());
+  const submittedRoundsRef = useRef<Set<number>>(new Set()); // Hangi turlarda cevap gönderildi
   const isLeavingRef = useRef(false);
   const checkIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -167,10 +169,40 @@ const App: React.FC = () => {
 
         if (uiStatus !== statusRef.current) {
           setStatus(uiStatus);
+
+          // Lobiye dönüldüğünde tüm oyun state'ini temizle
+          if (uiStatus === GameStatus.WAITING) {
+            if (checkIntervalRef.current) {
+              clearInterval(checkIntervalRef.current);
+              checkIntervalRef.current = null;
+            }
+            setRoundAnswers({});
+            setCurrentVotes([]);
+            processedRoundsRef.current = new Set();
+            submittedRoundsRef.current = new Set(); // Gönderilmiş turları da sıfırla
+          }
+
+          // Yeni tur başladığında cevapları ve interval'i temizle
+          if (uiStatus === GameStatus.PLAYING) {
+            // Önceki turdan kalan interval'i temizle (kritik!)
+            if (checkIntervalRef.current) {
+              clearInterval(checkIntervalRef.current);
+              checkIntervalRef.current = null;
+            }
+            setRoundAnswers({});
+            setCurrentVotes([]);
+          }
+
           if (uiStatus === GameStatus.VOTING) {
+            // Interval'i temizle
+            if (checkIntervalRef.current) {
+              clearInterval(checkIntervalRef.current);
+              checkIntervalRef.current = null;
+            }
+            // Önce temizle, sonra doğru turun cevaplarını al
+            setRoundAnswers({});
             const answers = await gameService.getRoundAnswers(activeRoomId, newRoomData.current_round);
-            // Eğer fetch sırasında canlı bir veri geldiyse onu silme, birleştir:
-            setRoundAnswers(prev => ({ ...prev, ...answers }));
+            setRoundAnswers(answers);
             refreshVotes(newRoomData.current_round);
           }
           if (uiStatus === GameStatus.SCORING || uiStatus === GameStatus.GAME_OVER) {
@@ -286,34 +318,77 @@ const App: React.FC = () => {
   };
 
   const handleStartGame = async () => {
-    if (activeRoomId) await gameService.startGame(activeRoomId);
+    if (!activeRoomId || loading) return; // Duplicate call guard
+    setLoading(true);
+    try {
+      await gameService.startGame(activeRoomId);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleRoundTimeUp = async (myAnswers: Record<string, string>) => {
     if (!me || !activeRoomId || !room) return;
 
-    await gameService.submitAnswers(activeRoomId, me.id, room.currentRound, myAnswers);
+    // Capture values at call time to avoid stale closure
+    const currentRoundNumber = room.currentRound;
+    const playerCount = room.players.length;
+    const roundDuration = room.settings.roundDuration;
+
+    // Bu turda zaten cevap gönderdik mi kontrolü
+    if (submittedRoundsRef.current.has(currentRoundNumber)) {
+      console.log('⚠️ Bu turda zaten cevap gönderildi, atlanıyor:', currentRoundNumber);
+      return;
+    }
+    submittedRoundsRef.current.add(currentRoundNumber);
+
+    console.log('📤 handleRoundTimeUp çağrıldı:', { player: me.name, round: currentRoundNumber, isHost: me.isHost });
+
+    await gameService.submitAnswers(activeRoomId, me.id, currentRoundNumber, myAnswers);
+    console.log('✅ Cevaplar gönderildi');
 
     if (me.isHost) {
+      console.log('👑 Host interval başlatıyor...');
+
       // Önceki interval'i temizle (memory leak önleme)
       if (checkIntervalRef.current) {
         clearInterval(checkIntervalRef.current);
       }
 
       checkIntervalRef.current = setInterval(async () => {
+        // Her kontrol için fresh data al
+        const { data: freshRoom } = await supabase
+          .from('rooms')
+          .select('current_round, round_start_time, status')
+          .eq('id', activeRoomId)
+          .single();
+
+        // Eğer tur değiştiyse veya status değiştiyse, interval'i durdur
+        if (!freshRoom || freshRoom.current_round !== currentRoundNumber || freshRoom.status !== 'PLAYING') {
+          console.log('🛑 Interval durduruluyor (tur/status değişti):', freshRoom);
+          if (checkIntervalRef.current) {
+            clearInterval(checkIntervalRef.current);
+            checkIntervalRef.current = null;
+          }
+          return;
+        }
+
         const allSubmitted = await gameService.checkAllAnswersSubmitted(
           activeRoomId,
-          room.currentRound,
-          room.players.length
+          currentRoundNumber,
+          playerCount
         );
 
-        const startTime = room.roundStartTime ? new Date(room.roundStartTime).getTime() : Date.now();
-        const durationMs = room.settings.roundDuration * 1000;
+        const startTime = freshRoom.round_start_time ? new Date(freshRoom.round_start_time).getTime() : Date.now();
+        const durationMs = roundDuration * 1000;
         const bufferMs = 3000;
         const now = Date.now();
         const isTimeExpired = now > (startTime + durationMs + bufferMs);
 
+        console.log('🔍 Interval kontrol:', { allSubmitted, isTimeExpired, round: currentRoundNumber, playerCount });
+
         if (allSubmitted || isTimeExpired) {
+          console.log('🎯 VOTING\'e geçiliyor!', { allSubmitted, isTimeExpired });
           if (checkIntervalRef.current) {
             clearInterval(checkIntervalRef.current);
             checkIntervalRef.current = null;
