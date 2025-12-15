@@ -37,6 +37,9 @@ const GamePhase: React.FC<GamePhaseProps> = ({
   letter, roundDuration, roomId, playerId, gameId, roundNumber, onTimeUp, onLeave, categories, roundStartTime
 }) => {
 
+  // localStorage key for this specific round
+  const storageKey = `harfbaz_answers_${gameId}_${roundNumber}`;
+
   const calculateInitialTime = () => {
     if (!roundStartTime) return roundDuration;
     const start = new Date(roundStartTime).getTime();
@@ -46,8 +49,21 @@ const GamePhase: React.FC<GamePhaseProps> = ({
     return remaining > 0 ? remaining : 0;
   };
 
+  // Load answers from localStorage on init
+  const loadSavedAnswers = (): Record<string, string> => {
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (e) {
+      console.warn('localStorage okuma hatası:', e);
+    }
+    return {};
+  };
+
   const [timeLeft, setTimeLeft] = useState(calculateInitialTime());
-  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [answers, setAnswers] = useState<Record<string, string>>(loadSavedAnswers);
   const [submitted, setSubmitted] = useState(false);
 
   const answersRef = useRef(answers);
@@ -55,6 +71,17 @@ const GamePhase: React.FC<GamePhaseProps> = ({
 
   useEffect(() => { answersRef.current = answers; }, [answers]);
   useEffect(() => { submittedRef.current = submitted; }, [submitted]);
+
+  // Save answers to localStorage whenever they change
+  useEffect(() => {
+    try {
+      if (Object.keys(answers).length > 0) {
+        localStorage.setItem(storageKey, JSON.stringify(answers));
+      }
+    } catch (e) {
+      // localStorage erişimi yoksa sessizce geç
+    }
+  }, [answers, storageKey]);
 
   // Track if component was mounted properly (for HMR detection)
   const mountedRef = useRef(false);
@@ -75,10 +102,27 @@ const GamePhase: React.FC<GamePhaseProps> = ({
 
   // Yeni oyun veya tur başladığında state'i sıfırla
   useEffect(() => {
-    setAnswers({});
+    // Clear old round's localStorage and load new round's saved answers
+    const newStorageKey = `harfbaz_answers_${gameId}_${roundNumber}`;
+    const savedAnswers = loadSavedAnswers();
+    setAnswers(savedAnswers);
     setSubmitted(false);
     submittedRef.current = false;
     setTimeLeft(calculateInitialTime());
+
+    // Clean up old rounds' localStorage (keep only current)
+    try {
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key?.startsWith('harfbaz_answers_') && key !== newStorageKey) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach(key => localStorage.removeItem(key));
+    } catch (e) {
+      // localStorage erişimi yoksa sessizce geç
+    }
   }, [gameId, roundNumber]);
 
   useEffect(() => {

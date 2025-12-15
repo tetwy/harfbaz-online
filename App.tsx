@@ -8,8 +8,11 @@ import { gameService } from './services/gameService';
 import { supabase } from './services/supabase';
 import { CATEGORIES } from './constants';
 
-// Lazy load with retry for Safari/mobile reliability
-const lazyWithRetry = (importFn: () => Promise<any>, retries = 3): React.LazyExoticComponent<any> => {
+// Lazy load with retry for Safari/mobile reliability (Generic version to preserve types)
+function lazyWithRetry<T extends React.ComponentType<any>>(
+  importFn: () => Promise<{ default: T }>,
+  retries = 3
+): React.LazyExoticComponent<T> {
   return lazy(async () => {
     for (let i = 0; i < retries; i++) {
       try {
@@ -22,7 +25,7 @@ const lazyWithRetry = (importFn: () => Promise<any>, retries = 3): React.LazyExo
     }
     return importFn();
   });
-};
+}
 
 // Lazy load heavy game phase components with retry
 const WaitingRoom = lazyWithRetry(() => import('./components/WaitingRoom'));
@@ -108,7 +111,7 @@ const App: React.FC = () => {
     const session = localStorage.getItem('harfbaz_session');
     if (session && !activeRoomId) {
       const { roomId, playerId } = JSON.parse(session);
-      gameService.reconnect(roomId, playerId).then(data => {
+      gameService.reconnect(roomId, playerId).then(async (data) => {
         if (data) {
           setRoom(data.room);
           setMe(data.player);
@@ -116,6 +119,18 @@ const App: React.FC = () => {
           let recoveredStatus = data.room.status as GameStatus;
           if (data.room.status === 'LOBBY') recoveredStatus = GameStatus.WAITING;
           setStatus(recoveredStatus);
+
+          // Eğer VOTING durumundaysak, cevapları ve oyları yükle
+          if (recoveredStatus === GameStatus.VOTING && data.room.currentRound && data.room.currentGameId) {
+            try {
+              const answers = await gameService.getRoundAnswers(roomId, data.room.currentRound, data.room.currentGameId);
+              setRoundAnswers(answers);
+              const votes = await gameService.getVotes(roomId, data.room.currentRound);
+              setCurrentVotes(votes);
+            } catch (e) {
+              console.error('Reconnect sonrası veri yükleme hatası:', e);
+            }
+          }
         } else {
           localStorage.removeItem('harfbaz_session');
         }
@@ -128,7 +143,7 @@ const App: React.FC = () => {
 
     const refreshPlayers = async () => {
       const freshPlayers = await gameService.getPlayers(activeRoomId);
-      setRoom((prev) => prev ? { ...prev, players: freshPlayers } : null);
+      setRoom((prev: Room | null) => prev ? { ...prev, players: freshPlayers } : null);
 
       const currentMe = meRef.current;
       if (currentMe) {
@@ -215,7 +230,7 @@ const App: React.FC = () => {
           }
         }
 
-        setRoom((prev) => prev ? {
+        setRoom((prev: Room | null) => prev ? {
           ...prev,
           status: newRoomData.status,
           currentLetter: newRoomData.current_letter,
@@ -237,13 +252,13 @@ const App: React.FC = () => {
       if (update.type === 'VOTES_UPDATE') {
         const { eventType, new: newRecord, old: oldRecord } = update.payload;
 
-        setCurrentVotes(prevVotes => {
+        setCurrentVotes((prevVotes: Vote[]) => {
           if (eventType === 'DELETE' && oldRecord?.id) {
-            return prevVotes.filter(v => v.id !== oldRecord.id);
+            return prevVotes.filter((v: Vote) => v.id !== oldRecord.id);
           }
 
           if (eventType === 'INSERT' && newRecord) {
-            const cleanVotes = prevVotes.filter(v =>
+            const cleanVotes = prevVotes.filter((v: Vote) =>
               !(v.voterId === newRecord.voter_id &&
                 v.targetPlayerId === newRecord.target_player_id &&
                 v.category === newRecord.category)
@@ -267,7 +282,7 @@ const App: React.FC = () => {
       if (update.type === 'ANSWERS_UPDATE') {
         const { new: newRecord, eventType } = update.payload;
         if ((eventType === 'INSERT' || eventType === 'UPDATE') && newRecord) {
-          setRoundAnswers(prev => ({
+          setRoundAnswers((prev: RoundAnswers) => ({
             ...prev,
             [newRecord.player_id]: newRecord.answers_json
           }));
@@ -330,7 +345,7 @@ const App: React.FC = () => {
       await gameService.startGame(activeRoomId);
       // Oyun başladıktan sonra oyuncu puanlarını güncelle
       const freshPlayers = await gameService.getPlayers(activeRoomId);
-      setRoom((prev) => prev ? { ...prev, players: freshPlayers } : null);
+      setRoom((prev: Room | null) => prev ? { ...prev, players: freshPlayers } : null);
     } finally {
       setLoading(false);
     }
@@ -427,7 +442,7 @@ const App: React.FC = () => {
           processedRoundsRef.current.add(room.currentRound);
           // Puan hesaplamasından sonra oyuncuları hemen güncelle
           const freshPlayers = await gameService.getPlayers(activeRoomId);
-          setRoom((prev) => prev ? { ...prev, players: freshPlayers } : null);
+          setRoom((prev: Room | null) => prev ? { ...prev, players: freshPlayers } : null);
         }
 
         if (room.currentRound < room.settings.totalRounds) {
@@ -449,7 +464,7 @@ const App: React.FC = () => {
     const currentCategories = room.settings.categories || CATEGORIES;
     const currentCategory = currentCategories[room.votingCategoryIndex || 0];
 
-    const isAlreadyVoted = currentVotes.some(v =>
+    const isAlreadyVoted = currentVotes.some((v: Vote) =>
       v.voterId === me.id &&
       v.targetPlayerId === targetPlayerId &&
       v.category === currentCategory
@@ -457,7 +472,7 @@ const App: React.FC = () => {
 
     let optimisticVotes;
     if (isAlreadyVoted) {
-      optimisticVotes = currentVotes.filter(v =>
+      optimisticVotes = currentVotes.filter((v: Vote) =>
         !(v.voterId === me.id && v.targetPlayerId === targetPlayerId && v.category === currentCategory)
       );
     } else {
@@ -534,8 +549,6 @@ const App: React.FC = () => {
             isHost={me.isHost}
             onNextCategory={handleNextCategory}
             onToggleVote={handleToggleVote}
-            onVotingComplete={() => { }}
-            initialBotVotes={[]}
             onLeave={handleLeaveRoom}
             isHiddenMode={room.settings.isHiddenMode || false}
             revealedPlayers={room.revealedPlayers || []}
