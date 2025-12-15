@@ -119,7 +119,7 @@ const GamePhase: React.FC<GamePhaseProps> = ({
   const displayCategories = categories && categories.length > 0 ? categories : CATEGORIES;
 
   return (
-    <div className="h-screen w-screen fixed inset-0 bg-[#0a0a1a] overflow-auto">
+    <div className="min-h-screen w-full bg-[#0a0a1a] overflow-x-hidden">
 
       {/* Background */}
       <div className="absolute inset-0 pointer-events-none">
@@ -142,8 +142,8 @@ const GamePhase: React.FC<GamePhaseProps> = ({
         <LogOut size={16} /> Çık
       </motion.button>
 
-      <div className="relative z-10 min-h-screen flex flex-col p-4 pt-14 md:pt-6 md:p-6">
-        <div className="max-w-2xl mx-auto w-full flex-1 flex flex-col">
+      <div className="relative z-10 min-h-screen flex flex-col p-4 pt-14 md:pt-6 md:p-6 pb-32">
+        <div className="max-w-2xl mx-auto w-full flex flex-col gap-4">
 
           {/* Header */}
           <div className="flex items-center gap-4 mb-6">
@@ -188,8 +188,8 @@ const GamePhase: React.FC<GamePhaseProps> = ({
             </div>
           </div>
 
-          {/* Categories - Centered */}
-          <div className="flex-1 flex items-center">
+          {/* Categories Grid */}
+          <div className="w-full">
             <div className="grid grid-cols-2 gap-3 w-full">
               {displayCategories.map((category, index) => (
                 <motion.div
@@ -227,7 +227,7 @@ const GamePhase: React.FC<GamePhaseProps> = ({
           {!submitted && (
             <>
               {/* Spacer div to prevent content hidden behind fixed button */}
-              <div className="h-24 md:h-20" />
+              <div className="h-32" />
 
               <div className="fixed bottom-0 left-0 right-0 p-4 pt-8 bg-gradient-to-t from-[#0f0c29] via-[#0f0c29] to-transparent z-50 pb-safe">
                 <div className="max-w-md mx-auto">

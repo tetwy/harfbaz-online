@@ -237,13 +237,15 @@ export const gameService = {
   },
 
   revealCard: async (roomId: string, playerId: string) => {
-    const { data: room } = await supabase.from('rooms').select('revealed_players').eq('id', roomId).maybeSingle();
-    const currentRevealed = room?.revealed_players || [];
+    // Atomic RPC kullanarak race condition önlenir
+    const { error } = await supabase.rpc('reveal_player_card', {
+      p_room_id: roomId,
+      p_player_id: playerId
+    });
 
-    if (!currentRevealed.includes(playerId)) {
-      await supabase.from('rooms').update({
-        revealed_players: [...currentRevealed, playerId]
-      }).eq('id', roomId);
+    if (error) {
+      console.error('Reveal card hatası:', error);
+      throw error;
     }
   },
 
